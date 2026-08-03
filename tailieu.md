@@ -886,3 +886,10 @@ Kiểm tra bản đóng gói lần 1:
 Kiểm tra bản đóng gói lần 2 sau khi bổ sung pretrained weight:
 
 - `python -m pytest -q`: **47 passed**, không có test failure; có 14 deprecation warnings từ dependency Matplotlib/PyParsing, không ảnh hưởng kết quả.
+
+Kết quả publish GitHub:
+
+- Commit nội dung chính: `b8ec656` — `Add YOLO26 P2-CBAM skin lesion paper workspace`.
+- Push thành công từ `b4a500f` lên `b8ec656` trên `origin/main`.
+- Repo cộng tác: `https://github.com/Hainguyen752004/SPKT_PAPER`.
+- Sau dòng nhật ký này có thêm một documentation-only commit để lưu chính kết quả push vào `tailieu.md` trên remote.
