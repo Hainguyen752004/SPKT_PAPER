@@ -297,7 +297,7 @@ Abstract khoảng 200–250 từ nên có năm phần, thường viết thành m
 
 1. **Background — 2 câu:** nêu vai trò của phân đoạn tổn thương da và ba khó khăn: artifact, biên/tổn thương nhỏ, phân bố chẩn đoán lệch.
 2. **Data pipeline — 2–3 câu:** nêu hai train views; v1 letterbox và v7 gồm crop, DullRazor-inspired hair removal, Gray-World, letterbox; nêu NV-excluding augmentation với polygon transformation. Không cần liệt kê mọi xác suất trong abstract.
-3. **Architecture — 2–3 câu:** nêu genuine YOLO26n-seg, P2 stride-4 bổ sung vào P3–P5, CBAM ở P2/P3 và `Segment26` bốn mức.
+3. **Architecture — 2–3 câu:** nêu kiến trúc dựa trên Ultralytics YOLO26n-seg, bổ sung P2 stride 4 vào P3–P5, CBAM ở P2/P3 và `Segment26` bốn mức.
 4. **Evaluation — 1–2 câu:** nói framework “is evaluated/will be evaluated” trên các split đã giữ cố định bằng mask mAP, Dice/IoU, precision/recall, latency và ablation. Nếu đây là abstract proposal chưa có kết quả, dùng “will be evaluated” hoặc “we define an evaluation protocol”; không giả metric.
 5. **Significance — 1 câu:** nói thiết kế hướng tới bảo toàn chi tiết và tăng khả năng chịu biến thiên artifact, nhưng dùng “aims to” hoặc “is designed to”, không dùng “demonstrates” khi chưa có số liệu.
 
@@ -463,7 +463,7 @@ Không nên claim mới ở cấp từng thành phần:
 
 Khoảng trống có thể bảo vệ, với điều kiện có thí nghiệm đầy đủ:
 
-1. **Architecture adaptation:** thích nghi genuine YOLO26n instance segmentation thành `Segment26` bốn mức P2/P3/P4/P5 cho tổn thương da.
+1. **Architecture adaptation:** thích nghi kiến trúc instance segmentation dựa trên Ultralytics YOLO26n thành `Segment26` bốn mức P2/P3/P4/P5 cho tổn thương da.
 2. **High-resolution attention placement:** đặt CBAM cụ thể tại P2/P3 và kiểm chứng bằng ablation dưới cùng protocol.
 3. **Paired multi-view learning:** huấn luyện trên cả v1 giữ artifact và v7 xử lý artifact của cùng source image, thay vì chỉ thay toàn bộ dataset bằng ảnh hairless.
 4. **Joint controlled evaluation:** đánh giá riêng và kết hợp P2, CBAM, v7 và NV-excluding augmentation, đồng thời báo chi phí tính toán.
@@ -689,7 +689,7 @@ Ngoài mask mAP và Dice/IoU, phiên bản này phải báo:
 
 Trong phạm vi tìm kiếm mục tiêu tới ngày 03/08/2026, chưa tìm thấy công trình trùng hoàn toàn:
 
-> **Genuine YOLO26n four-scale P2–P5 instance segmentation with CBAM at P2/P3, trained using paired default-letterboxed and physically artifact-processed views of the same HAM10000 image, with lesion-level artifact-view consistency and lightweight P2 boundary supervision.**
+> **An Ultralytics YOLO26n-based four-scale P2–P5 instance-segmentation framework with CBAM at P2/P3, trained using paired default-letterboxed and deterministically artifact-processed views of the same HAM10000 image, with lesion-level artifact-view consistency and lightweight P2 boundary supervision.**
 
 Điểm phân biệt quan trọng:
 
@@ -893,3 +893,89 @@ Kết quả publish GitHub:
 - Push thành công từ `b4a500f` lên `b8ec656` trên `origin/main`.
 - Repo cộng tác: `https://github.com/Hainguyen752004/SPKT_PAPER`.
 - Sau dòng nhật ký này có thêm một documentation-only commit để lưu chính kết quả push vào `tailieu.md` trên remote.
+
+---
+
+## Bắt đầu triển khai code AVC (03/08/2026)
+
+Quyết định triển khai theo từng publication gate, không viết toàn bộ trainer một lần. Phase 1 là **paired geometry audit**, vì consistency loss sẽ không đáng tin nếu polygon v7 bị clamp sai sau Smart ROI Crop.
+
+Implementation plan chi tiết được lưu tại:
+
+`docs/superpowers/plans/2026-08-03-paired-geometry-audit.md`
+
+Thứ tự phase đã khóa:
+
+1. true polygon clipping + reversible transform metadata;
+2. audit đủ 8.008 pair và tạo v7_eval tách biệt;
+3. paired dataset/sampler;
+4. masked P2/P3 pooling + AVC/VICReg;
+5. P2 boundary supervision;
+6. custom YOLO26 trainer, ablation và export.
+
+Dataset hiện có không bị overwrite; corrected dataset sẽ dùng destination versioned mới cho tới khi audit đạt.
+
+### Điều chỉnh mục tiêu xuất bản: Conference trước, Q1 sau
+
+Ngày 03/08/2026, tác giả quyết định chia nghiên cứu thành hai mốc:
+
+#### Mốc 1 — Bài hội nghị hiện tại
+
+Mục tiêu là hoàn thành một bài gọn, có một thông điệp chính rõ ràng và số liệu trung thực:
+
+- nền tảng Ultralytics YOLO26n-based instance segmentation;
+- prediction bốn mức P2–P5 và CBAM tại high-resolution stages;
+- pipeline v1/v7 và NV-excluding augmentation đã có;
+- bổ sung **paired artifact-view consistency** ở mức tối thiểu khả thi nếu kịp triển khai/ablation;
+- boundary supervision chỉ đưa vào khi code và ablation đủ ổn định, không bắt buộc phải nhồi vào abstract hội nghị;
+- benchmark chính trên v1 val/test, báo mask mAP, Dice/IoU, boundary metric và chi phí mô hình;
+- tuyệt đối không dùng claim Q1, SOTA hoặc robustness nếu chưa có kết quả tương ứng.
+
+Mức thí nghiệm tối thiểu cho conference:
+
+1. YOLO26n-seg baseline;
+2. +P2;
+3. +P2+CBAM;
+4. +v1/v7 multiview;
+5. paired-control và +AVC nếu phase AVC hoàn tất;
+6. ít nhất một lần chạy hoàn chỉnh cho tất cả hàng, sau đó ưu tiên 3 seed cho baseline trực tiếp và mô hình đề xuất.
+
+#### Mốc 2 — Extended Q1 journal
+
+Sau conference mới mở rộng thành bài journal bằng các phần đòi hỏi bằng chứng mạnh hơn:
+
+- patient/lesion-group split được xác minh;
+- external dataset hoặc cross-dataset validation;
+- đầy đủ VICReg-style AVC, P2 boundary supervision và interaction ablation;
+- nhiều seed/confidence interval;
+- calibration, failure analysis, artifact subgroup và statistical significance;
+- so sánh thêm mô hình chuyên biệt/foundation model;
+- phân tích latency, FLOPs, VRAM và deployment;
+- nếu phù hợp, pixel-level consistency có inverse-warp chính xác.
+
+Như vậy bài conference là nền tảng thực nghiệm, còn Q1 là bản mở rộng có protocol và validation mạnh hơn; không chỉ kéo dài nội dung conference bằng cách thêm vài bảng.
+
+### Phản biện implementation plan phase 1
+
+Reviewer chưa duyệt bản plan geometry đầu tiên vì sáu contract cần đặc tả rõ trước khi code:
+
+1. metadata phải lưu stable instance ID, class và polygon trước/sau transform;
+2. publication gate phải nêu điều kiện pass/fail và tolerance;
+3. rasterization/downsample P2 mask phải có quy tắc thực thi chính xác;
+4. CLI destination versioned phải được hỗ trợ và kiểm thử an toàn;
+5. Git commits phải thực hiện trong repo sync `D:\PAPER_SPKT\SPKT_PAPER_sync`, vì thư mục dữ liệu gốc không có `.git`;
+6. metadata phải định nghĩa công thức hair coverage, vignette crop ratio và Gray-World correction magnitude.
+
+Các điểm này sẽ được sửa trong plan trước khi thay đổi source. Đây không làm đổi hướng conference; nó ngăn lỗi nhãn và làm số liệu hội nghị có thể kiểm chứng.
+
+### Kết quả rà soát tài liệu và duyệt implementation plan
+
+Ngày 03/08/2026, đã kiểm tra `tailieu.md` và plan geometry bằng bộ đọc UTF-8 nghiêm ngặt:
+
+- cả hai file đọc thành công dưới UTF-8;
+- không có Unicode replacement character `U+FFFD`;
+- không phát hiện các lỗi gõ đã biết như `xữ`, `heah`, `prosec`, `nolp`, `khum`, `rùi`;
+- thay các cụm cũ `genuine YOLO26` và `physically artifact-processed` bằng cách gọi trung tính, chính xác hơn: `Ultralytics YOLO26n-based` và `deterministically artifact-processed`;
+- chuẩn hóa cụm `P2 stride-4` thành `P2 stride 4` trong phần hướng dẫn tiếng Việt.
+
+Reviewer đã duyệt (`APPROVED`) implementation plan sau khi bổ sung đầy đủ sáu contract về metadata instance, publication gate, P2 rasterization, destination safety, Git workflow và artifact proxies. Plan hiện sẵn sàng để thực thi.
