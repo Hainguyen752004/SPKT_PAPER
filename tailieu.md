@@ -1088,3 +1088,60 @@ Checkpoint GitHub Task 1–3:
 - commit `9c9c582` — `feat: add auditable paired-view geometry preprocessing`;
 - push thành công lên `origin/main` của `Hainguyen752004/SPKT_PAPER`;
 - dataset ảnh, `runs`, cache và checkpoint huấn luyện không nằm trong commit.
+
+### Bắt đầu Task 4 — Paired geometry publication gate
+
+Mục tiêu: tạo auditor độc lập đọc dataset corrected và `metadata/transforms.jsonl`, sau đó quyết định pair nào đủ điều kiện cho AVC. Auditor không sửa ảnh/label và không tự động đưa pair lỗi vào training consistency.
+
+Các invariant bắt buộc:
+
+- mọi `(pair_id, view)` là duy nhất và đủ view cần thiết;
+- label file khớp metadata instance/class/polygon;
+- polygon hữu hạn, diện tích dương và nằm trong canvas;
+- source→canvas→source round-trip error tối đa `1e-5` pixel;
+- P2 mask được rasterize full canvas bằng OpenCV `fillPoly`, downsample stride 4 bằng max pooling và không rỗng;
+- pair bị loại khỏi AVC có stable reason code, nhưng pair lỗi hợp lệ do crop không nhất thiết làm cả dataset gate thất bại;
+- report JSON được ghi atomically và CLI exit khác 0 khi dataset-level gate thất bại.
+
+Task 4 tiếp tục theo TDD và hai vòng review trước khi chạy trên dữ liệu thật.
+
+#### Kết quả Task 4 — Auditor và publication gate
+
+File mới:
+
+- `data_processing/audit_paired_geometry.py`;
+- `tests/test_paired_geometry_audit.py`.
+
+Auditor hiện thực hiện:
+
+- parse JSONL metadata và YOLO labels theo kiểu total/safe, không crash với JSON hợp lệ nhưng sai type;
+- kiểm tra image/label/metadata existence, duplicate view/file, instance/class/source correspondence;
+- tái tính source→crop clipping và crop→canvas transform;
+- kiểm tra v1 phải dùng full-source crop;
+- so khớp source path, source dimensions và preprocessing version giữa v1–v7;
+- kiểm tra polygon label sau serialization có ít nhất ba điểm duy nhất và diện tích **lớn hơn 0**, không loại nhầm polygon rất nhỏ nhưng vẫn raster được;
+- raster P2 đúng contract `cv2.fillPoly → adaptive_max_pool2d`, bảo toàn tiny positive polygon;
+- giới hạn canvas trước allocation, decode ảnh thật và so kích thước ảnh với metadata;
+- tách structural gate failures khỏi legitimate crop exclusions;
+- đếm reason theo từng polygon, kể cả nhiều zero-area polygon trong cùng label file;
+- ghi report JSON atomically, dọn temp và giữ report cũ nếu `os.replace` thất bại;
+- CLI trả exit 0 khi gate pass, nonzero khi gate fail và 2 khi không ghi được output.
+
+Lịch sử TDD/review chính:
+
+1. Initial RED: module auditor chưa tồn tại; bản đầu đạt 12 focused tests.
+2. Spec review phát hiện thiếu source→crop recomputation và malformed UTF-8 crash; bổ sung lên 22 focused tests, spec review `APPROVED`.
+3. Quality review phát hiện unhashable JSON, zero-area label, v1 semantics, cross-split counts, canvas OOM risk, corrupt image và atomic cleanup; bổ sung adversarial tests và sửa.
+4. Re-review tiếp tục phát hiện overflow từ số hữu hạn cực lớn, tiny-positive polygon bị loại nhầm và thiếu pair source/version checks; đã sửa.
+5. Vòng cuối phát hiện nhiều zero-area polygon trong một file chỉ đếm một; parser hiện quét toàn bộ dòng và trả structured reason counter.
+6. Kết quả agent cuối: **41 focused tests passed**, **151 full-suite tests passed, 1 skipped**, `py_compile` đạt.
+7. Spec review và code-quality review cuối: `APPROVED`.
+
+Không chạy auditor trên dataset thật trong Task 4. Bước kế tiếp là sync/push source đã review, sau đó mới sinh `geom_v2` và chạy gate trên toàn bộ 8.008 pair.
+
+Verification độc lập Task 4 trên repo sync:
+
+- `python -m py_compile data_processing/audit_paired_geometry.py tests/test_paired_geometry_audit.py`: exit code 0;
+- `python -m pytest -q`: **151 passed, 1 skipped, 14 warnings** trong 7,56 giây;
+- `git diff --check`: exit code 0;
+- repo sạch trước sync; chỉ auditor, auditor tests, plan và `tailieu.md` thay đổi sau sync.

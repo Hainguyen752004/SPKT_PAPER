@@ -166,17 +166,17 @@ git commit -m "feat: persist valid paired-view geometry"
 - Create: `data_processing/audit_paired_geometry.py`
 - Create: `tests/test_paired_geometry_audit.py`
 
-- [ ] **Step 1: Write failing auditor tests**
+- [x] **Step 1: Write failing auditor tests**
 
 Use temporary miniature datasets to test: missing view; duplicate `pair_id/view`; class-count mismatch; invalid polygon; empty downsampled P2 mask; excessive round-trip error; and a completely valid pair. Assert stable reason codes rather than full prose messages.
 
-- [ ] **Step 2: Confirm tests fail**
+- [x] **Step 2: Confirm tests fail**
 
 Run: `python -m pytest tests/test_paired_geometry_audit.py -q`
 
 Expected: FAIL because the auditor module does not exist.
 
-- [ ] **Step 3: Implement audit API and CLI**
+- [x] **Step 3: Implement audit API and CLI**
 
 Implement `audit_paired_geometry(dataset_root, metadata_path, p2_stride=4)` returning a JSON-serializable report with:
 
@@ -191,13 +191,13 @@ Implement `audit_paired_geometry(dataset_root, metadata_path, p2_stride=4)` retu
 
 The CLI must write through a temporary file followed by atomic rename and exit nonzero when the gate fails.
 
-- [ ] **Step 4: Run auditor tests**
+- [x] **Step 4: Run auditor tests**
 
 Run: `python -m pytest tests/test_paired_geometry_audit.py -q`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit Task 4**
+- [x] **Step 5: Complete Task 4 review (commit in sync repository checkpoint)**
 
 ```powershell
 git add data_processing/audit_paired_geometry.py tests/test_paired_geometry_audit.py
