@@ -1,0 +1,45 @@
+{
+  "augmentation_attempts": 15864,
+  "augmentation_saved": 15864,
+  "class_polygons": {
+    "0": 2742,
+    "1": 4316,
+    "2": 9220,
+    "3": 966,
+    "4": 9336,
+    "5": 24138,
+    "6": 1188
+  },
+  "cross_split_overlaps": {},
+  "invalid_files": [],
+  "output_images": {
+    "dataset_yolo_640x640_multiview": {
+      "test": 1007,
+      "train": 16016,
+      "val": 998
+    },
+    "dataset_yolo_aug_p2_cbam": {
+      "test": 1007,
+      "train": 31880,
+      "val": 998
+    }
+  },
+  "output_labels": {
+    "dataset_yolo_640x640_multiview": {
+      "test": 1007,
+      "train": 16016,
+      "val": 998
+    },
+    "dataset_yolo_aug_p2_cbam": {
+      "test": 1007,
+      "train": 31880,
+      "val": 998
+    }
+  },
+  "skipped_files": 0,
+  "source_pairs": {
+    "test": 1007,
+    "train": 8008,
+    "val": 998
+  }
+}
