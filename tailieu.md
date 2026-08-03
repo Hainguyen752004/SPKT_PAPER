@@ -1081,3 +1081,10 @@ Verification độc lập trên `D:\PAPER_SPKT\SPKT_PAPER_sync` trước checkpo
 - test skip duy nhất: directory-symlink capability trên Windows;
 - `git diff --check`: exit code 0, không có whitespace error;
 - trạng thái trước sync của repo Git sạch; chỉ bảy file source/test/docs thuộc Task 1–3 thay đổi sau sync.
+
+Checkpoint GitHub Task 1–3:
+
+- secret-pattern scan: không phát hiện token/API key/password rõ ràng;
+- commit `9c9c582` — `feat: add auditable paired-view geometry preprocessing`;
+- push thành công lên `origin/main` của `Hainguyen752004/SPKT_PAPER`;
+- dataset ảnh, `runs`, cache và checkpoint huấn luyện không nằm trong commit.
