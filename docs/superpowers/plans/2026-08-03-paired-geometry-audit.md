@@ -18,7 +18,7 @@
 - Create: `data_processing/paired_geometry.py`
 - Create: `tests/test_paired_geometry.py`
 
-- [ ] **Step 1: Write failing tests for polygon clipping**
+- [x] **Step 1: Write failing tests for polygon clipping**
 
 Add tests covering: polygon fully inside; fully outside; crossing each of four crop edges; duplicate adjacent vertices; degenerate output; and area preservation for an inside polygon.
 
@@ -30,13 +30,13 @@ def test_clip_polygon_crossing_crop_rectangle():
     assert all(0.0 <= x <= 4.0 and 0.0 <= y <= 10.0 for x, y in clipped)
 ```
 
-- [ ] **Step 2: Run the new geometry tests and verify import failure**
+- [x] **Step 2: Run the new geometry tests and verify import failure**
 
 Run: `python -m pytest tests/test_paired_geometry.py -q`
 
 Expected: FAIL because `data_processing.paired_geometry` does not exist.
 
-- [ ] **Step 3: Implement minimal pure geometry functions**
+- [x] **Step 3: Implement minimal pure geometry functions**
 
 Implement:
 
@@ -50,13 +50,13 @@ def clip_polygon_to_rect(points, x_min, y_min, x_max, y_max): ...
 
 Use Sutherland–Hodgman clipping against left, right, top and bottom. Intersection calculations must handle parallel segments without division by zero. Return `[]` when fewer than three unique vertices remain or area is at most `EPSILON`. Preserve floating-point coordinates; do not round inside the primitive.
 
-- [ ] **Step 4: Run geometry tests**
+- [x] **Step 4: Run geometry tests**
 
 Run: `python -m pytest tests/test_paired_geometry.py -q`
 
 Expected: all Task 1 tests PASS.
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Complete Task 1 review (commit deferred to sync repository)**
 
 ```powershell
 git add data_processing/paired_geometry.py tests/test_paired_geometry.py
@@ -69,7 +69,7 @@ git commit -m "feat: add true polygon crop clipping"
 - Modify: `data_processing/paired_geometry.py`
 - Modify: `tests/test_paired_geometry.py`
 
-- [ ] **Step 1: Write failing tests for transform metadata**
+- [x] **Step 1: Write failing tests for transform metadata**
 
 Test a `ViewTransform` record containing source width/height, crop box, resize scale, padding and canvas size. Verify source→canvas→source round trip below `1e-5` pixels for non-clipped points, JSON serialization stability, and rejection of invalid crop/scale/canvas values.
 
@@ -81,23 +81,23 @@ def test_view_transform_round_trip():
     assert restored[0] == pytest.approx((100.0, 120.0), abs=1e-5)
 ```
 
-- [ ] **Step 2: Confirm tests fail**
+- [x] **Step 2: Confirm tests fail**
 
 Run: `python -m pytest tests/test_paired_geometry.py -q`
 
 Expected: FAIL because `ViewTransform` is undefined.
 
-- [ ] **Step 3: Implement immutable metadata model**
+- [x] **Step 3: Implement immutable metadata model**
 
 Add a frozen dataclass `ViewTransform` with `source_to_canvas`, `canvas_to_source`, `to_dict`, and `from_dict`. Define crop box as `(x, y, width, height)` in source pixels. For v1, crop box is the entire source image. Include `view`, `pair_id`, and preprocessing parameters in the emitted record outside the dataclass.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `python -m pytest tests/test_paired_geometry.py -q`
 
 Expected: all geometry/metadata tests PASS.
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Complete Task 2 review (commit deferred to sync repository)**
 
 ```powershell
 git add data_processing/paired_geometry.py tests/test_paired_geometry.py
@@ -111,7 +111,7 @@ git commit -m "feat: add reversible paired-view transforms"
 - Modify: `tests/test_data_pipeline.py`
 - Modify: `tests/test_paired_geometry.py`
 
-- [ ] **Step 1: Write failing integration tests**
+- [x] **Step 1: Write failing integration tests**
 
 Add tests proving:
 
@@ -121,13 +121,13 @@ Add tests proving:
 4. val/test remain v1-only unless an explicit evaluation flag is used;
 5. metadata output is transactionally replaced with the dataset.
 
-- [ ] **Step 2: Run targeted tests and verify failure**
+- [x] **Step 2: Run targeted tests and verify failure**
 
 Run: `python -m pytest tests/test_data_pipeline.py tests/test_paired_geometry.py -q`
 
 Expected: new tests FAIL against the coordinatewise-clamping implementation.
 
-- [ ] **Step 3: Replace crop label transformation**
+- [x] **Step 3: Replace crop label transformation**
 
 Update `transform_labels_crop_and_letterbox` to:
 
@@ -137,21 +137,21 @@ Update `transform_labels_crop_and_letterbox` to:
 - translate by crop origin, letterbox, normalize and serialize;
 - return transformed lines plus per-instance audit details rather than silently hiding dropped polygons.
 
-- [ ] **Step 4: Persist metadata**
+- [x] **Step 4: Persist metadata**
 
 Write `metadata/transforms.jsonl` inside the transactional build directory. Each record must include `pair_id`, `split`, `view`, source relative path, source size, crop box, resize scale, padding, canvas size, preprocessing version, number of input/output instances and dropped-instance reasons. Sort source images before processing and write JSON keys deterministically.
 
-- [ ] **Step 5: Add deterministic v7 evaluation option**
+- [x] **Step 5: Add deterministic v7 evaluation option**
 
 Add CLI flag `--generate-v7-eval`. Default behavior remains train v1+v7 and val/test v1-only. With the flag, write val/test processed views to `images/{split}_v7_eval` and matching labels/metadata; never add those folders to the training YAML.
 
-- [ ] **Step 6: Run integration tests**
+- [x] **Step 6: Run integration tests**
 
 Run: `python -m pytest tests/test_data_pipeline.py tests/test_paired_geometry.py -q`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Task 3**
+- [x] **Step 7: Complete Task 3 review (commit in sync repository checkpoint)**
 
 ```powershell
 git add data_processing/01_preprocess.py data_processing/paired_geometry.py tests/test_data_pipeline.py tests/test_paired_geometry.py

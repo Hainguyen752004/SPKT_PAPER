@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+import math
 from pathlib import Path
 
 import cv2
@@ -61,7 +62,7 @@ def make_dataset(root, counts=(1, 1, 1)):
 def test_project_paths_derive_from_script(preprocess, augment):
     assert preprocess.PROJECT_ROOT == ROOT
     assert preprocess.SRC_ROOT == ROOT / "data/dataset_yolo_fixed_labels/dataset_yolo"
-    assert preprocess.DST_ROOT == ROOT / "data/dataset_yolo_640x640_multiview"
+    assert preprocess.DST_ROOT == ROOT / "data/dataset_yolo_640x640_multiview_geom_v2"
     assert augment.PROJECT_ROOT == ROOT
     assert augment.SRC_ROOT == ROOT / "data/dataset_yolo_640x640_multiview"
     assert augment.DST_ROOT == ROOT / "data/dataset_yolo_aug_p2_cbam"
@@ -118,6 +119,297 @@ def test_stage1_view_policy_and_label_math(preprocess):
     assert preprocess.output_stems("isic_1", "val") == ["isic_1_v1"]
     lines = preprocess.transform_labels_letterbox([(0, [0, 0, 1, 0, 1, 1])], 10, 20, 2, 5, 3, 100)
     assert lines == ["0 0.050000 0.030000 0.250000 0.030000 0.250000 0.430000"]
+
+
+def test_v7_crossing_polygon_is_intersected_instead_of_coordinatewise_clamped(preprocess):
+    items = [(2, [0.0, 0.0, 0.5, 0.5, 0.0, 1.0])]
+
+    lines, instances = preprocess.transform_labels_crop_and_letterbox(
+        items, 10, 10, 2, 0, 8, 10, 1.0, 0, 0, new_size=10, pair_id="isic_1"
+    )
+
+    assert lines == ["2 0.000000 0.200000 0.300000 0.500000 0.000000 0.800000"]
+    assert lines != ["2 0.000000 0.000000 0.300000 0.500000 0.000000 1.000000"]
+    assert instances == [{
+        "instance_id": "isic_1:0",
+        "class_id": 2,
+        "source_polygon": [[0.0, 0.0], [5.0, 5.0], [0.0, 10.0]],
+        "crop_intersection_polygon": [[2.0, 2.0], [5.0, 5.0], [2.0, 8.0]],
+        "canvas_polygon": [[0.0, 2.0], [3.0, 5.0], [0.0, 8.0]],
+        "source_area": 25.0,
+        "crop_intersection_area": 9.0,
+        "canvas_area": 9.0,
+        "status": "kept",
+        "reason": None,
+    }]
+
+
+def test_v7_fully_outside_polygon_is_dropped_with_stable_audit_reason(preprocess):
+    lines, instances = preprocess.transform_labels_crop_and_letterbox(
+        [(0, [0.0, 0.0, 0.1, 0.0, 0.0, 0.1])],
+        10, 10, 5, 5, 5, 5, 2.0, 0, 0, new_size=10, pair_id="isic_2"
+    )
+
+    assert lines == []
+    assert instances[0]["instance_id"] == "isic_2:0"
+    assert instances[0]["status"] == "dropped"
+    assert instances[0]["reason"] == "INSTANCE_OUTSIDE_V7_CROP"
+    assert instances[0]["crop_intersection_polygon"] == []
+    assert instances[0]["crop_intersection_area"] == 0.0
+    assert instances[0]["canvas_polygon"] == []
+    assert instances[0]["canvas_area"] == 0.0
+
+
+def test_v7_diagonal_polygon_outside_crop_is_not_misclassified_by_bbox(preprocess):
+    lines, instances = preprocess.transform_labels_crop_and_letterbox(
+        [(0, [0, 0, 1, 0, 0, 1])],
+        4, 4, 3, 3, 1, 1, 4.0, 0, 0, new_size=4, pair_id="isic_diagonal"
+    )
+
+    assert lines == []
+    assert instances[0]["reason"] == "INSTANCE_OUTSIDE_V7_CROP"
+
+
+def test_v7_boundary_only_contact_is_degenerate_not_outside(preprocess):
+    lines, instances = preprocess.transform_labels_crop_and_letterbox(
+        [(0, [0, 0, 1, 0, 0, 1])],
+        4, 4, 2, 2, 1, 1, 4.0, 0, 0, new_size=4, pair_id="isic_touch"
+    )
+
+    assert lines == []
+    assert instances[0]["reason"] == "INSTANCE_DEGENERATE_AFTER_CLIP"
+
+
+def test_v7_collapsed_duplicate_polygon_inside_crop_is_degenerate(preprocess):
+    lines, instances = preprocess.transform_labels_crop_and_letterbox(
+        [(0, [0.6, 0.6, 0.7, 0.7, 0.6, 0.6])],
+        10, 10, 5, 5, 5, 5, 2.0, 0, 0, new_size=10, pair_id="isic_collapsed"
+    )
+
+    assert lines == []
+    assert instances[0]["source_area"] == 0.0
+    assert instances[0]["reason"] == "INSTANCE_DEGENERATE_AFTER_CLIP"
+
+
+def test_v7_label_mapping_uses_effective_integer_raster_scale(preprocess):
+    lines, _ = preprocess.transform_labels_crop_and_letterbox(
+        [(0, [0.0, 0.0, 1.0, 0.0, 1.0, 1.0])],
+        7, 3, 0, 0, 7, 3, 10 / 7, 0, 3, new_size=10, pair_id="isic_3"
+    )
+
+    assert lines == ["0 0.000000 0.300000 1.000000 0.300000 1.000000 0.700000"]
+
+
+@pytest.mark.parametrize("coords,geometry", [
+    ([0.0, 0.0, 0.5, 0.0, 1.0, 0.0], (10, 10, 0, 0, 10, 10)),
+    ([0, 0, 1, 0, 1, 1, 0.75, 1, 0.75, 0.25, 0.25, 0.25, 0.25, 1, 0, 1],
+     (4, 4, 0, 2, 4, 1)),
+])
+def test_v7_degenerate_or_disconnected_clip_is_dropped(preprocess, coords, geometry):
+    orig_w, orig_h, rx, ry, rw, rh = geometry
+    scale = min(10 / rw, 10 / rh)
+    resized_height = int(rh * scale)
+    pad_y = (10 - resized_height) // 2
+
+    lines, instances = preprocess.transform_labels_crop_and_letterbox(
+        [(0, coords)], orig_w, orig_h, rx, ry, rw, rh, scale, 0, pad_y,
+        new_size=10, pair_id="isic_bad"
+    )
+
+    assert lines == []
+    assert instances[0]["status"] == "dropped"
+    assert instances[0]["reason"] == "INSTANCE_DEGENERATE_AFTER_CLIP"
+
+
+def test_artifact_proxy_formulas_and_exposed_intermediates(preprocess):
+    image = np.zeros((2, 3, 3), dtype=np.uint8)
+    image[:, :, 0] = 10
+    image[:, :, 1] = 20
+    image[:, :, 2] = 30
+
+    corrected = preprocess.gray_world_color_constancy(image)
+    corrected_with_gains, gains = preprocess.gray_world_color_constancy(image, return_gains=True)
+    assert np.array_equal(corrected, corrected_with_gains)
+    assert gains == pytest.approx([2.0, 1.0, 2.0 / 3.0])
+    legacy_b, legacy_g, legacy_r = cv2.split(image.astype(np.float32))
+    legacy_means = [np.mean(channel) for channel in (legacy_b, legacy_g, legacy_r)]
+    legacy_gray = sum(legacy_means) / 3.0
+    legacy = cv2.merge([
+        np.clip(channel * (legacy_gray / mean), 0, 255)
+        for channel, mean in zip((legacy_b, legacy_g, legacy_r), legacy_means)
+    ]).astype(np.uint8)
+    assert np.array_equal(corrected, legacy)
+
+    inpainted = preprocess.dullrazor(image)
+    inpainted_with_mask, mask = preprocess.dullrazor(image, return_mask=True)
+    assert np.array_equal(inpainted, inpainted_with_mask)
+    proxies = preprocess.artifact_proxies(mask, 3, 2, 6, 4, gains)
+    assert proxies["hair_mask_coverage"] == np.count_nonzero(mask > 0) / 6
+    assert proxies["vignette_crop_ratio"] == 1.0 - 6 / 24
+    assert proxies["gray_world_gains"] == pytest.approx(gains)
+    assert proxies["gray_world_correction_magnitude"] == pytest.approx(
+        math.sqrt((2.0 - 1.0) ** 2 + (1.0 - 1.0) ** 2 + (2.0 / 3.0 - 1.0) ** 2)
+    )
+
+
+def test_build_dataset_writes_paired_metadata_and_default_view_policy(tmp_path, preprocess, monkeypatch):
+    source = make_dataset(tmp_path)
+    destination = tmp_path / "build"
+    monkeypatch.setattr(preprocess, "SRC_ROOT", source)
+
+    records = preprocess.build_dataset(destination)
+
+    persisted = [json.loads(line) for line in (destination / "metadata/transforms.jsonl").read_text().splitlines()]
+    assert persisted == records
+    for line in (destination / "metadata/transforms.jsonl").read_text().splitlines():
+        ordered = json.loads(line, object_pairs_hook=list)
+        assert [key for key, _ in ordered] == sorted(key for key, _ in ordered)
+    assert [(record["split"], record["view"]) for record in records] == [
+        ("train", "v1"), ("train", "v7"), ("val", "v1"), ("test", "v1")
+    ]
+    train_v1, train_v7 = records[:2]
+    assert train_v1["pair_id"] == train_v7["pair_id"] == "isic_0000000"
+    assert train_v1["transform"]["crop_box"] == [0.0, 0.0, 12.0, 8.0]
+    assert train_v7["transform"]["crop_box"] == [0.0, 0.0, 12.0, 8.0]
+    assert train_v1["source"] == train_v7["source"] == "images/train/isic_0000000.jpg"
+    assert train_v1["input_instance_count"] == train_v7["input_instance_count"] == 1
+    assert train_v1["output_instance_count"] == train_v7["output_instance_count"] == 1
+    assert set(train_v7["artifact_proxies"]) == {
+        "hair_mask_coverage", "vignette_crop_ratio", "gray_world_gains",
+        "gray_world_correction_magnitude",
+    }
+    assert not (destination / "images/val_v7_eval").exists()
+    assert not (destination / "images/test_v7_eval").exists()
+    assert (destination / "images/val/isic_0001000_v1.jpg").exists()
+    assert (destination / "images/test/isic_0002000_v1.jpg").exists()
+
+
+def test_generate_v7_eval_uses_separate_non_training_directories(tmp_path, preprocess, monkeypatch):
+    source = make_dataset(tmp_path)
+    destination = tmp_path / "build"
+    monkeypatch.setattr(preprocess, "SRC_ROOT", source)
+
+    records = preprocess.build_dataset(destination, generate_v7_eval=True)
+
+    assert [(record["split"], record["view"]) for record in records] == [
+        ("train", "v1"), ("train", "v7"),
+        ("val", "v1"), ("val", "v7"),
+        ("test", "v1"), ("test", "v7"),
+    ]
+    assert (destination / "images/val_v7_eval/isic_0001000_v7.jpg").exists()
+    assert (destination / "labels/val_v7_eval/isic_0001000_v7.txt").exists()
+    assert (destination / "images/test_v7_eval/isic_0002000_v7.jpg").exists()
+    assert not (destination / "images/val/isic_0001000_v7.jpg").exists()
+    assert not (destination / "images/test/isic_0002000_v7.jpg").exists()
+
+
+def test_destination_allowlist_rejects_roots_descendants_traversal_and_symlink_escape(tmp_path, preprocess):
+    project = tmp_path / "project"
+    data = project / "data"
+    approved = data / "dataset_yolo_640x640_multiview_geom_v2"
+    data.mkdir(parents=True)
+
+    assert preprocess.resolve_destination(approved, project, approved) == approved.resolve()
+    unsafe_paths = [
+        data,
+        project / "outside",
+        approved / "child",
+        approved / ".." / "wrong",
+    ]
+    for unsafe in unsafe_paths:
+        with pytest.raises(ValueError, match="destination"):
+            preprocess.resolve_destination(unsafe, project, approved)
+
+    outside = tmp_path / "outside-target"
+    outside.mkdir()
+    try:
+        approved.symlink_to(outside, target_is_directory=True)
+    except OSError as error:
+        pytest.skip(f"directory symlinks unavailable: {error}")
+    with pytest.raises(ValueError, match="destination"):
+        preprocess.resolve_destination(approved, project, approved)
+
+
+def test_cli_destination_and_eval_flags(preprocess, tmp_path):
+    args = preprocess.parse_args(["--destination", str(tmp_path), "--generate-v7-eval", "--overwrite"])
+    assert args.destination == str(tmp_path)
+    assert args.generate_v7_eval is True
+    assert args.overwrite is True
+
+
+def test_preprocess_transaction_includes_metadata_replacement_and_rollback(tmp_path, preprocess):
+    destination = tmp_path / "data/output"
+    metadata = destination / "metadata/transforms.jsonl"
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text("old\n")
+
+    def failing_builder(temp):
+        path = temp / "metadata/transforms.jsonl"
+        path.parent.mkdir(parents=True)
+        path.write_text("partial\n")
+        raise RuntimeError("metadata failure")
+
+    with pytest.raises(RuntimeError, match="metadata failure"):
+        preprocess.transactional_build(destination, tmp_path, destination, True, failing_builder)
+    assert metadata.read_text() == "old\n"
+
+    def successful_builder(temp):
+        path = temp / "metadata/transforms.jsonl"
+        path.parent.mkdir(parents=True)
+        path.write_text("new\n")
+
+    preprocess.transactional_build(destination, tmp_path, destination, True, successful_builder)
+    assert metadata.read_text() == "new\n"
+
+
+@pytest.mark.parametrize("destination_exists", [False, True])
+def test_preprocess_transaction_preserves_unowned_legacy_backup(
+        tmp_path, preprocess, destination_exists):
+    destination = tmp_path / "data/output"
+    legacy_backup = destination.with_name(".output.backup")
+    legacy_backup.mkdir(parents=True)
+    sentinel = legacy_backup / "sentinel.txt"
+    sentinel.write_text("unowned")
+    if destination_exists:
+        destination.mkdir()
+        (destination / "old.txt").write_text("old")
+
+    preprocess.transactional_build(
+        destination, tmp_path, destination, destination_exists,
+        lambda temp: (temp / "new.txt").write_text("new"),
+    )
+
+    assert (destination / "new.txt").read_text() == "new"
+    assert sentinel.read_text() == "unowned"
+    assert not list(destination.parent.glob(".output.backup-*"))
+
+
+def test_preprocess_transaction_rolls_back_owned_backup_without_touching_legacy(
+        tmp_path, preprocess, monkeypatch):
+    destination = tmp_path / "data/output"
+    destination.mkdir(parents=True)
+    (destination / "old.txt").write_text("old")
+    legacy_backup = destination.with_name(".output.backup")
+    legacy_backup.mkdir()
+    sentinel = legacy_backup / "sentinel.txt"
+    sentinel.write_text("unowned")
+    original_rename = Path.rename
+
+    def fail_build_swap(path, target):
+        if ".output.build-" in path.name:
+            raise OSError("forced unique-backup rollback")
+        return original_rename(path, target)
+
+    monkeypatch.setattr(Path, "rename", fail_build_swap)
+    with pytest.raises(OSError, match="forced unique-backup rollback"):
+        preprocess.transactional_build(
+            destination, tmp_path, destination, True,
+            lambda temp: (temp / "new.txt").write_text("new"),
+        )
+
+    assert (destination / "old.txt").read_text() == "old"
+    assert sentinel.read_text() == "unowned"
+    assert not list(destination.parent.glob(".output.backup-*"))
 
 
 def test_augmentation_policy_attempts_and_area_filter(tmp_path, augment):

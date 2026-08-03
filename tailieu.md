@@ -986,3 +986,98 @@ Kết quả đồng bộ GitHub:
 - `git diff --check`: không có lỗi whitespace.
 - Commit: `e707521` — `docs: define conference scope and geometry implementation plan`.
 - Push thành công lên `origin/main` của `Hainguyen752004/SPKT_PAPER`.
+
+### Quyết định workspace khi triển khai conference
+
+Quy trình ban đầu đề xuất Git worktree để cô lập nhánh phát triển. Tác giả chọn triển khai trực tiếp tại `D:\PAPER_SPKT\Ham1000_p2_CBAM` để thuận tiện truy cập dataset cục bộ. Vì thư mục này không phải Git repository, quy tắc thực thi được điều chỉnh:
+
+- chỉ sửa source/test/documentation bằng patch có kiểm soát;
+- không overwrite hoặc xóa hai processed dataset hiện tại;
+- chạy targeted tests và full regression tại thư mục gốc;
+- chỉ sau khi test đạt mới đồng bộ các file đã review sang `D:\PAPER_SPKT\SPKT_PAPER_sync` để commit/push;
+- nếu một task thất bại, giữ nguyên log lỗi trong `tailieu.md` và sửa theo TDD, không che giấu kết quả.
+
+Bắt đầu Task 1 của conference implementation: true polygon–rectangle clipping và unit tests.
+
+#### Kết quả Task 1 — True polygon clipping
+
+File mới:
+
+- `data_processing/paired_geometry.py`;
+- `tests/test_paired_geometry.py`.
+
+Quy trình TDD và kiểm tra:
+
+1. Targeted test ban đầu thất bại đúng dự kiến với `ModuleNotFoundError` vì module chưa tồn tại.
+2. Bản triển khai đầu tiên đạt 11 targeted tests và 58 full-suite tests.
+3. Spec review: `APPROVED`.
+4. Code-quality review phát hiện hai vấn đề: sai số gần biên có thể để tọa độ ngoài crop và polygon lõm có giao đa thành phần có thể sinh bridge giả.
+5. Đã thêm regression tests và sửa: phân loại biên nghiêm ngặt, tọa độ intersection nằm đúng boundary, từ chối bounds không hữu hạn, và loại bảo thủ kết quả disconnected/self-touching thay vì ghi polygon YOLO sai.
+6. Kết quả cuối: **17 targeted tests passed**; **64 full-suite tests passed**, 14 warnings cũ từ Matplotlib/PyParsing.
+7. Code-quality re-review: `APPROVED`; không còn blocker của Task 1.
+
+Không có dataset nào bị sửa hoặc ghi đè trong Task 1. Commit được hoãn tới bước đồng bộ repo Git sau khi hoàn thành nhóm task đã review.
+
+#### Kết quả Task 2 — Reversible ViewTransform metadata
+
+Đã bổ sung frozen dataclass `ViewTransform` và test riêng trong `tests/test_view_transform.py`.
+
+Contract cuối cùng:
+
+- lưu source size, crop box, nominal scale, kích thước raster thực sau resize, padding và canvas size;
+- mapping dùng effective scale riêng cho trục x/y từ kích thước raster thực, khớp cách OpenCV làm tròn xuống;
+- nominal scale phải sinh đúng `int(crop_dimension × scale)` và không được mâu thuẫn với resized dimensions;
+- crop phải nằm trong source; resized raster cộng padding phải nằm trong canvas;
+- serialization có `schema_version=1`, đọc được transform dict hoặc nested record và bỏ qua các record-level fields không liên quan;
+- từ chối NaN/Inf, scale/canvas/crop không hợp lệ và schema version chưa hỗ trợ.
+
+Quy trình review:
+
+1. TDD red xác nhận `ViewTransform` chưa tồn tại.
+2. Bản đầu đạt 15 targeted và 79 full-suite tests; spec review `APPROVED`.
+3. Quality review phát hiện ba vấn đề về canvas containment, nominal/effective scale và schema cứng; đã sửa bằng actual resized dimensions và schema-aware parsing.
+4. Re-review phát hiện nominal scale còn có thể mâu thuẫn raster; đã thêm floor-match invariant theo chính `letterbox_image` hiện tại.
+5. Kết quả cuối: **24 targeted tests passed**, **88 full-suite tests passed** trong 58,39 giây; 14 dependency warnings cũ.
+6. Code-quality re-review: `APPROVED`, không còn issue Task 2.
+
+Không có dataset nào bị sửa trong Task 2. Bước tiếp theo là tích hợp clipping và metadata vào `01_preprocess.py` bằng test trước.
+
+#### Kết quả Task 3 — Tích hợp preprocessing geometry/metadata
+
+Các file thay đổi:
+
+- `data_processing/01_preprocess.py`;
+- `data_processing/paired_geometry.py`;
+- `tests/test_data_pipeline.py`;
+- `tests/test_paired_geometry.py`.
+
+Chức năng đã triển khai:
+
+- thay coordinatewise clamp bằng true polygon–rectangle clipping;
+- label transformation dùng effective scale theo raster resize thực;
+- sinh stable instance audit với source/intersection/canvas polygon, area, status và reason code;
+- ghi `metadata/transforms.jsonl` deterministically bên trong transactional build;
+- lưu exact artifact proxies: hair-mask coverage, vignette crop ratio, Gray-World gains và correction magnitude;
+- thêm destination versioned an toàn `dataset_yolo_640x640_multiview_geom_v2`;
+- thêm `--generate-v7-eval`, ghi val/test v7 vào các folder `_v7_eval` tách biệt và không đưa vào training YAML;
+- giữ mặc định train v1+v7, val/test v1-only;
+- backup transactional dùng tên UUID và chỉ xóa/restore backup do chính transaction hiện tại tạo.
+
+Lịch sử TDD/review:
+
+1. Bảy integration tests mới thất bại đúng dự kiến trước implementation.
+2. Bản đầu đạt 98 full-suite tests, 1 skip; spec review `APPROVED`.
+3. Quality review phát hiện backup cố định có thể xóa dữ liệu cũ và bbox inference gắn sai reason code; đã sửa bằng owned unique backup và `polygon_intersects_rect`.
+4. Re-review phát hiện polygon nguồn suy biến trong crop bị gắn `OUTSIDE`; đã sửa: `OUTSIDE` chỉ áp dụng khi source area dương và thật sự không giao crop, còn polygon collapsed/duplicate là `DEGENERATE_AFTER_CLIP`.
+5. Kết quả agent cuối: **110 passed, 1 skipped**, `py_compile` đạt. Test skip là kiểm tra tạo directory symlink do Windows không cấp quyền; static path-resolution logic vẫn được spec reviewer duyệt.
+6. Spec review và code-quality re-review cuối đều `APPROVED`.
+
+Không chạy preprocessing trên dataset thật trong Task 3 và không thay đổi hai processed dataset hiện có. Trước commit/push phải chạy verification độc lập trên bản sync Git.
+
+Verification độc lập trên `D:\PAPER_SPKT\SPKT_PAPER_sync` trước checkpoint GitHub:
+
+- `python -m py_compile` cho preprocessing, geometry và ba test module: exit code 0;
+- `python -m pytest -q`: **110 passed, 1 skipped, 14 warnings** trong 9,72 giây;
+- test skip duy nhất: directory-symlink capability trên Windows;
+- `git diff --check`: exit code 0, không có whitespace error;
+- trạng thái trước sync của repo Git sạch; chỉ bảy file source/test/docs thuộc Task 1–3 thay đổi sau sync.
