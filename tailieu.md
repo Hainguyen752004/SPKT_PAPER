@@ -1623,3 +1623,24 @@ Ghi chu:
 
 - Sau pytest van co `PermissionError` o `pytest-current` trong atexit cua Windows/conda, nhung command exit code 0 va test summary da pass.
 - Khong dua thu muc `runs/` hoac weights vao GitHub; chi sync source/test/docs/log.
+
+### GitHub sync cho fast training checkpoint
+
+Repo sync:
+
+```text
+D:\PAPER_SPKT\SPKT_PAPER_sync
+```
+
+Verification truoc commit tren repo sync:
+
+- `python -m py_compile 03_train_p2_cbam.py cbam.py data_processing\paired_geometry.py data_processing\audit_dataset.py tests\test_model_architecture.py`: exit code 0.
+- `git diff --check`: exit code 0.
+- `$env:PYTHONIOENCODING='utf-8'; & C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe -m pytest -q`: 152 passed, 1 skipped trong 13.22 giay.
+- Secret-pattern scan chi match cac dong log co chu `token/API key/password`, khong thay credential that.
+- Staged scope: `03_train_p2_cbam.py`, `cbam.py`, `data_processing/audit_dataset.py`, `data_processing/paired_geometry.py`, `tests/test_model_architecture.py`, `README.md`, `tailieu.md`; khong stage `runs/`, weights moi hoac dataset.
+
+Commit/push:
+
+- commit `4a957ef` - `fix: enable fast P2-CBAM training validation`;
+- push thanh cong len `origin/main`: `64b98b0..4a957ef`.
