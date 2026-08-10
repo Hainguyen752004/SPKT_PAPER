@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import sys
+import types
 
 import pytest
 import torch
@@ -68,6 +69,7 @@ def test_model_build_and_eval_forward_has_four_finite_scales():
     detections, prediction_prototypes = predictions
     assert torch.isfinite(detections).all()
     assert torch.isfinite(prediction_prototypes).all()
+    assert prediction_prototypes.shape[-2:] == (64, 64)
     for branch in ("one2many", "one2one"):
         assert len(auxiliary[branch]["feats"]) == 4
         assert torch.isfinite(auxiliary[branch]["mask_coefficient"]).all()
@@ -186,3 +188,44 @@ def test_cleanup_error_does_not_mask_original_exception(tmp_path, monkeypatch):
 def test_portable_dataset_path():
     config = yaml.safe_load((ROOT / "dataset_p2_cbam.yaml").read_text(encoding="utf-8"))
     assert config["path"] == "data/dataset_yolo_aug_p2_cbam"
+
+
+def test_train_cli_overrides_fast_run_controls(tmp_path, monkeypatch):
+    train = load_training_module()
+    runtime_yaml = tmp_path / "runtime.yaml"
+    runtime_yaml.write_text("path: dataset\n", encoding="utf-8")
+    train_calls = []
+
+    class FakeYOLO:
+        def __init__(self, model_path):
+            self.model_path = model_path
+            self.model = types.SimpleNamespace(state_dict=lambda: {})
+
+        def train(self, **kwargs):
+            train_calls.append(kwargs)
+
+    monkeypatch.setattr(train, "YOLO", FakeYOLO)
+    monkeypatch.setattr(train, "require_yolo26_support", lambda: object)
+    monkeypatch.setattr(train, "load_partial_pretrained", lambda model, weights: {})
+    monkeypatch.setattr(train, "create_runtime_dataset_yaml", lambda source_yaml: runtime_yaml)
+    monkeypatch.setattr(train.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(train.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(sys, "argv", [
+        "03_train_p2_cbam.py",
+        "--epochs", "2",
+        "--fraction", "0.05",
+        "--batch", "4",
+        "--workers", "0",
+        "--name", "quick_smoke",
+    ])
+
+    train.main()
+
+    assert train_calls
+    assert train_calls[0]["epochs"] == 2
+    assert train_calls[0]["fraction"] == pytest.approx(0.05)
+    assert train_calls[0]["batch"] == 4
+    assert train_calls[0]["workers"] == 0
+    assert train_calls[0]["name"] == "quick_smoke"
+    assert train_calls[0]["mask_ratio"] == 2
+    assert not runtime_yaml.exists()

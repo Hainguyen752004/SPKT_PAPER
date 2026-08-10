@@ -97,3 +97,30 @@ Script train dùng `models/yolo26n-seg-p2-cbam.yaml`, chuyển một phần tr�
 ## Trạng thái bằng chứng
 
 Repository chưa cung cấp đủ kết quả đã kiểm chứng để khẳng định vượt SOTA, tốc độ FPS cố định, hoặc các giá trị mAP/Dice cụ thể. Những số liệu đó phải được đo trên cùng split, phần cứng và protocol rồi báo cáo kèm độ bất định. Kế hoạch baseline/ablation được nêu trong `tailieu.md`.
+## Quick training path
+
+On the current Windows machine, prefer the environment interpreter directly instead of `conda run`, because the base
+conda wrapper can fail while printing Unicode training logs to a CP1252 console.
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe 03_train_p2_cbam.py --epochs 5 --fraction 0.10 --batch 8 --workers 0 --name SkinSeg_YOLO26_P2_CBAM_QuickResult_F010_E5
+```
+
+The train script supports fast-run controls:
+
+- `--fraction`: train-data fraction in `(0, 1]`;
+- `--batch`: batch-size override;
+- `--workers`: dataloader worker override;
+- `--name`: Ultralytics run-name override.
+
+The P2-CBAM model registers `P2CompatibleSegment26` under the `Segment26` parser name. It keeps P2-P5 prediction
+features, but uses P3-P5 for the prototype branch so the segmentation validator receives stride-4 masks.
+
+Latest quick sanity result, not a paper-final number:
+
+- run: `runs/segment/SkinSeg_YOLO26_P2_CBAM_QuickResult_F010_E5`;
+- train: 10% of `dataset_yolo_aug_p2_cbam`, 5 epochs, batch 8;
+- validation: 998 images;
+- final all-class box mAP50/mAP50-95: `0.169` / `0.107`;
+- final all-class mask mAP50/mAP50-95: `0.163` / `0.118`.

@@ -257,7 +257,9 @@ def main(argv=None):
     expected = EXPECTED_SOURCE_COUNTS
     if args.expected_counts:
         values = [int(value) for value in args.expected_counts.split(",")]
-        expected = dict(zip(SPLITS, values, strict=True))
+        if len(values) != len(SPLITS):
+            raise ValueError(f"--expected-counts requires {len(SPLITS)} comma-separated values")
+        expected = dict(zip(SPLITS, values))
     payload = audit_project(project, expected)
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")

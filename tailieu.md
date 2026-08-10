@@ -1145,3 +1145,481 @@ Verification độc lập Task 4 trên repo sync:
 - `python -m pytest -q`: **151 passed, 1 skipped, 14 warnings** trong 7,56 giây;
 - `git diff --check`: exit code 0;
 - repo sạch trước sync; chỉ auditor, auditor tests, plan và `tailieu.md` thay đổi sau sync.
+
+Checkpoint GitHub Task 4:
+
+- secret-pattern scan: không phát hiện credential rõ ràng;
+- commit `64b98b0` — `feat: add paired geometry publication gate`;
+- push thành công lên `origin/main`;
+- không có dataset, run hoặc checkpoint huấn luyện trong commit.
+
+### Bắt đầu Task 5 — Sinh và audit dữ liệu geometry v2 thật
+
+Trước khi chạy phải xác nhận destination versioned chưa tồn tại và dung lượng đĩa đủ. Lệnh dự kiến không dùng `--overwrite`:
+
+```powershell
+python data_processing/01_preprocess.py --destination data/dataset_yolo_640x640_multiview_geom_v2 --generate-v7-eval
+```
+
+Hai processed dataset cũ tiếp tục được giữ nguyên. Nếu destination v2 đã tồn tại, dừng để kiểm tra thay vì tự động xóa.
+
+#### Lần chạy Task 5 số 1 — Dừng trước khi xử lý ảnh
+
+Kiểm tra trước chạy:
+
+- destination `geom_v2` chưa tồn tại;
+- ổ D còn khoảng 117,1 GB trống.
+
+Lệnh chạy dừng với exit code 1 tại dòng in console `Nguồn dữ liệu gốc`. Stack trace: `UnicodeEncodeError` từ `encodings/cp1252.py`; `sys.stdout.encoding` của môi trường là `cp1252`, không biểu diễn được chữ Việt. Kiểm tra source cho thấy đây là print Unicode duy nhất trong CLI; destination vẫn không tồn tại và không có build directory dở.
+
+Root cause: nội dung log CLI giả định terminal UTF-8, trong khi Windows process hiện tại dùng CP1252. Đây là lỗi portability của console, không phải lỗi ảnh, label, OpenCV hoặc transactional build. Sẽ thêm regression test và thay log runtime bằng chuỗi ASCII/encoding-safe trước khi chạy lại.
+
+Kết quả sửa console portability:
+
+- TDD red: focused test thất bại đúng với `UnicodeEncodeError` ở nhãn tiếng Việt;
+- thay startup label bằng ASCII `Source data:`; không reconfigure `sys.stdout` và không che lỗi encoding;
+- focused green: 1 passed;
+- full suite: **152 passed, 1 skipped**, 14 warnings;
+- `py_compile` đạt;
+- review độc lập: `APPROVED`, gồm kiểm tra subprocess dưới `PYTHONIOENCODING=cp1252`.
+
+Destination v2 vẫn chưa tồn tại; đủ điều kiện chạy lại lần 2 mà không dùng `--overwrite`.
+
+### Checkpoint sau cau hoi: lam gi tiep de ra ket qua nhanh
+
+Nguoi dung hoi: "gio minh lam gi tiep theo de co the ra ket qua nhanh luon ta".
+
+Lenh/kiem tra da thuc hien:
+
+- Kiem tra thu muc goc `D:\PAPER_SPKT\Ham1000_p2_CBAM`: thay source/tests/docs/data/runs va cac file train/yaml hien co.
+- Kiem tra process Python bang `Get-Process python` va `Get-CimInstance Win32_Process`: khong thay process `data_processing/01_preprocess.py` dang chay; cac process Python hien co chu yeu la `inference.web_app` va pgAdmin.
+- Kiem tra `data`: co build tam `.dataset_yolo_640x640_multiview_geom_v2.build-54exvcl9`, chua co destination chinh thuc `dataset_yolo_640x640_multiview_geom_v2`.
+- Dem build tam: 13.966 file. Ket luan: lan sinh `geom_v2` chua hoan tat thanh destination chinh thuc; khong duoc xem nhu dataset da san sang.
+- Doc `SPKT_PAPER_sync/audit_reports/final_review_processed.json`: dataset hien co co source train/val/test = 8008/998/1007; `dataset_yolo_640x640_multiview` train/val/test = 16016/998/1007; `dataset_yolo_aug_p2_cbam` train/val/test = 31880/998/1007; skipped_files = 0; invalid_files = []; cross_split_overlaps = {}.
+- Doc `dataset_p2_cbam.yaml`: hien dang tro vao `data/dataset_yolo_aug_p2_cbam`, dung de train nhanh.
+- Doc `03_train_p2_cbam.py`: script train SkinSeg-YOLO26n P2-CBAM, mac dinh 300 epochs, batch Windows = 8, workers = 0, project `runs/segment`, name conference/test tuy so epoch.
+
+Nhan dinh:
+
+- Duong nhanh nhat de co bang ket qua hoi nghi la train truoc tren dataset da audit so luong `dataset_yolo_aug_p2_cbam`.
+- `geom_v2` va auditor paired geometry van quan trong cho novelty/AVC, nhung vi output chinh thuc chua co nen khong nen cho no chan ket qua metric dau tien.
+- De ra so nhanh: chay smoke 1-3 epoch de kiem tra moi truong/YOLO26, sau do chay training ngan 30-50 epoch cho bang hoi nghi tam thoi. Neu on thi tang epoch qua dem.
+
+### Kiem tra moi truong train nhanh
+
+Lenh/ket qua:
+
+- `nvidia-smi`: co GPU NVIDIA GeForce RTX 4060 Laptop, VRAM 8.188 MiB; dang co process `vungcam_2026\python.exe` dung GPU.
+- Kiem tra file weights/config: `models/yolo26n-seg.pt` va `models/yolo26n-seg-p2-cbam.yaml` deu ton tai.
+- Lenh Python dau tien dung cu phap heredoc cua bash trong PowerShell nen fail parse truoc khi chay; day la loi lenh kiem tra, khong anh huong code/dataset.
+- Chay lai bang here-string PowerShell voi `python` mac dinh thi import Ultralytics fail do base conda dang co NumPy 2.4.6 khong tuong thich binary OpenCV (`_ARRAY_API not found`, `numpy.core.multiarray failed to import`).
+
+Ket luan:
+
+- Khong dung base `python` de train.
+- Can dung moi truong `vungcam_2026`: `conda run -n vungcam_2026 python ...`.
+
+### Xac nhan moi truong `vungcam_2026`
+
+Lenh:
+
+```powershell
+conda run -n vungcam_2026 python -c "import torch, ultralytics; print('torch', torch.__version__); print('cuda', torch.cuda.is_available()); print('device_count', torch.cuda.device_count()); print('ultralytics', ultralytics.__version__); from ultralytics.nn.modules import Segment26; print('Segment26', Segment26 is not None)"
+```
+
+Ket qua:
+
+- torch `2.6.0+cu124`;
+- CUDA available: `True`;
+- GPU count: `1`;
+- Ultralytics `8.4.13`;
+- `Segment26` available: `True`.
+
+Ket luan: co the train bang `conda run -n vungcam_2026 python 03_train_p2_cbam.py ...`.
+
+### Smoke train 1 epoch P2-CBAM
+
+Lenh:
+
+```powershell
+conda run -n vungcam_2026 python 03_train_p2_cbam.py --epochs 1
+```
+
+Trang thai sau 20 phut:
+
+- Shell timeout 20 phut voi exit code 124, nhung process con `python 03_train_p2_cbam.py --epochs 1` van dang chay nen chua ket luan fail.
+- Run dir da tao: `runs/segment/SkinSeg_YOLO26_P2_CBAM_Test`.
+- File da co: `args.yaml`, `labels.jpg`, `train_batch0.jpg`, `train_batch1.jpg`, `train_batch2.jpg`, folder `weights`.
+- `args.yaml`: epochs 1, batch 8, imgsz 640, device 0, workers 0, data runtime temp YAML tro vao `dataset_yolo_aug_p2_cbam`.
+- `nvidia-smi`: process train PID 22440 dang dung GPU; VRAM tong khoang 5.374 MiB, GPU util co dao dong.
+
+Nhan dinh:
+
+- Model/dataset da qua duoc buoc khoi tao va ve batch, dang vao train thuc.
+- Do Windows workers = 0 va dataset 31.880 anh segmentation, 1 epoch co the cham; can theo doi den khi co `results.csv` va weights.
+
+### Theo doi smoke train
+
+Sau khi shell timeout:
+
+- Process `03_train_p2_cbam.py --epochs 1` van ton tai: wrapper PID 3904, child PID 22440.
+- CPU time child PID 22440 khoang 2090 giay va van tang, working set khoang 306 MB; ket luan process dang lam viec, khong phai crash im lang.
+- Thu muc `weights` chua co file; `results.csv` chua co. Voi Ultralytics, cac file nay thuong xuat hien sau khi epoch/validation ket thuc.
+
+Tam thoi khong khoi dong job train thu hai de tranh tranh GPU/VRAM.
+
+### Dung smoke train de chuyen sang duong nhanh hon
+
+Ly do:
+
+- Sau hon 20 phut, job 1 epoch full dataset van chua tao `results.csv`/weights.
+- Process van dang chay, nen khong phai crash, nhung toc do nay khong phu hop voi muc tieu "ra ket qua nhanh luon".
+
+Lenh dung job:
+
+```powershell
+$targets = @(3904,22440); foreach ($targetPid in $targets) { $procInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $targetPid" -ErrorAction SilentlyContinue; if ($procInfo -and $procInfo.CommandLine -like '*03_train_p2_cbam.py --epochs 1*') { Stop-Process -Id $targetPid -Force; "STOPPED $targetPid" } else { "SKIPPED $targetPid" } }
+```
+
+Ket qua:
+
+- PID 3904 stopped.
+- PID 22440 stopped.
+
+Ghi chu loi lenh:
+
+- Lenh dung dau tien dung bien `$pid`, bi PowerShell tu choi vi `$PID` la bien he thong read-only. Da doi thanh `$targetPid` va dung thanh cong.
+
+De xuat tiep theo:
+
+- Them option train nhanh vao `03_train_p2_cbam.py`: `--fraction`, `--batch`, `--workers`, `--name`.
+- Chay sanity subset truoc, vi full 31.880 anh voi workers 0 tren Windows qua cham cho muc tieu lay ket qua ngay.
+
+### Sua script train de chay nhanh
+
+Muc tieu:
+
+- Cho phep chay subset/fraction nho de lay ket qua pipeline nhanh.
+- Giu default cu khi khong truyen option: epochs 300, batch Windows 8, workers Windows 0, name conference/test theo so epoch, fraction 1.0.
+
+TDD:
+
+1. Them test `test_train_cli_overrides_fast_run_controls` trong `tests/test_model_architecture.py`.
+2. RED:
+
+```powershell
+conda run -n vungcam_2026 python -m pytest tests/test_model_architecture.py -k fast_run_controls -q
+```
+
+Ket qua RED: 1 failed, ly do dung mong doi: `argparse` bao `unrecognized arguments: --fraction 0.05 --batch 4 --workers 0 --name quick_smoke`.
+
+Thay doi code:
+
+- `03_train_p2_cbam.py` them option CLI:
+  - `--fraction` trong khoang `(0, 1]`;
+  - `--batch` so nguyen duong;
+  - `--workers` so nguyen khong am;
+  - `--name` de dat run name.
+- Truyen cac option nay vao `model.train(...)`.
+
+GREEN:
+
+```powershell
+conda run -n vungcam_2026 python -m pytest tests/test_model_architecture.py -k fast_run_controls -q
+python -m py_compile 03_train_p2_cbam.py
+```
+
+Ket qua:
+
+- focused test: 1 passed, 12 deselected;
+- `py_compile`: exit code 0.
+
+Ghi chu: sau focused pytest, conda/Windows co in `PermissionError` o `pytest-current` trong atexit, nhung command exit code 0 va test da pass.
+
+### Thu chay quick smoke qua `conda run`
+
+Lenh:
+
+```powershell
+conda run -n vungcam_2026 python 03_train_p2_cbam.py --epochs 1 --fraction 0.01 --batch 4 --workers 0 --name SkinSeg_YOLO26_P2_CBAM_QuickSmoke_F001_E1
+```
+
+Ket qua:
+
+- Command tra exit code 0 nhung `conda run` in error report `UnicodeEncodeError` khi wrapper conda co gang print `response.stdout` ra console CP1252.
+- Run folder `runs/segment/SkinSeg_YOLO26_P2_CBAM_QuickSmoke_F001_E1` duoc tao.
+- Co `args.yaml`, `labels.jpg`, `train_batch0.jpg`, `train_batch1.jpg`, `train_batch2.jpg`.
+- Chua co `results.csv` va chua co weights.
+- Khong con process `03_train_p2_cbam.py` sau lenh.
+
+Ket luan:
+
+- `conda run` khong phu hop de xem log train vi wrapper base conda gap loi encoding khi in stdout.
+- Se chuyen sang goi truc tiep interpreter cua env:
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe 03_train_p2_cbam.py --epochs 1 --fraction 0.01 --batch 4 --workers 0 --name SkinSeg_YOLO26_P2_CBAM_QuickSmoke_F001_E1_Direct
+```
+
+### Loi validation P2 mask va sua `mask_ratio`
+
+Lenh direct-env:
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe 03_train_p2_cbam.py --epochs 1 --fraction 0.01 --batch 4 --workers 0 --name SkinSeg_YOLO26_P2_CBAM_QuickSmoke_F001_E1_Direct
+```
+
+Ket qua:
+
+- Train subset vao that: 319 train images, 998 val images, 80 train batches, GPU mem khoang 2.19G.
+- Sau train epoch, validation crash:
+
+```text
+RuntimeError: mat1 and mat2 shapes cannot be multiplied (1x28224 and 112896x300)
+```
+
+Root cause:
+
+- P2 segmentation head sinh mask/proto phan giai cao hon default validation mask ratio.
+- Ultralytics default `mask_ratio=4` lam GT mask flatten 28.224 pixel, trong khi predicted mask flatten 112.896 pixel. Ti le dung bang 4 lan dien tich, tuong ung can `mask_ratio=2`.
+
+TDD sua loi:
+
+1. Them assertion vao `test_train_cli_overrides_fast_run_controls`: `train_calls[0]["mask_ratio"] == 2`.
+2. RED:
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe -m pytest tests/test_model_architecture.py -k fast_run_controls -q
+```
+
+Ket qua RED: 1 failed do `KeyError: 'mask_ratio'`.
+
+3. Sua `03_train_p2_cbam.py`: truyen `mask_ratio=2` vao `model.train(...)`.
+4. GREEN:
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe -m pytest tests/test_model_architecture.py -k fast_run_controls -q
+python -m py_compile 03_train_p2_cbam.py
+```
+
+Ket qua:
+
+- focused test: 1 passed, 12 deselected;
+- `py_compile`: exit code 0.
+
+### Sua tuong thich Segment26 P2 voi validator
+
+Quan sat sau khi dat `mask_ratio=2`:
+
+- `args.yaml` da ghi `mask_ratio: 2`, nhung validation van crash cung shape mismatch.
+- Doc source Ultralytics:
+  - `SegmentationValidator._prepare_batch` resize GT mask ve `prepared_batch["imgsz"] // 4` khi dung `ops.process_mask`;
+  - `SegmentationValidator.postprocess` tao predicted mask theo kich thuoc proto;
+  - `Proto26` fuse feature dau vao va sau do `Proto` upsample, nen neu dua P2 vao proto thi proto ra stride 2.
+
+Root cause dung:
+
+- P2 prediction path hop le cho box/mask coefficient, nhung prototype branch cua stock validator can proto stride 4.
+- Model P2-CBAM cu dua ca P2 vao `Proto26`, lam prediction masks co dien tich gap 4 lan GT masks trong validation.
+
+TDD:
+
+1. Them assertion vao `test_model_build_and_eval_forward_has_four_finite_scales`: voi input 256, `prediction_prototypes.shape[-2:] == (64, 64)`.
+2. RED: focused `model_build` fail vi proto dang la `128x128`.
+3. Sua `cbam.py`:
+   - them `P2CompatibleSegment26`, subclass cua Ultralytics `Segment26`;
+   - neu head co 4 scale thi detection/coefficients van dung P2-P5, nhung proto branch chi nhan P3-P5 de giu stride 4;
+   - stock 3-scale Segment26 van giu nguyen behavior;
+   - `register_cbam()` dang ky subclass nay duoi ten `Segment26` trong `ultralytics.nn.modules` va `ultralytics.nn.tasks`.
+4. Loi trung gian: proto module da tao theo P3-P5 nhung forward van dua P2-P5, gay mismatch channel. Da override `forward()` de `Detect.forward(self, x)` dung du 4 scale, con `self.proto(...)` nhan `x[1:]` khi co 4 scale.
+5. GREEN:
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe -m pytest tests/test_model_architecture.py -k "model_build or fast_run_controls" -q
+python -m py_compile cbam.py 03_train_p2_cbam.py
+```
+
+Ket qua:
+
+- 2 passed, 11 deselected;
+- `py_compile`: exit code 0.
+
+### Quick smoke thanh cong sau P2 proto fix
+
+Lenh:
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe 03_train_p2_cbam.py --epochs 1 --fraction 0.01 --batch 4 --workers 0 --name SkinSeg_YOLO26_P2_CBAM_QuickSmoke_F001_E1_P2ProtoFix
+```
+
+Ket qua:
+
+- Exit code 0.
+- Train subset: 319 images, 80 batches.
+- Val: 998 images, 998 instances, 125 batches.
+- Model summary sau fix: `cbam.P2CompatibleSegment26`, 404 layers, 3.108.803 parameters, 14.0 GFLOPs.
+- GPU mem train khoang 1.7G voi batch 4.
+- Output: `results.csv`, `results.png`, confusion matrices, PR/F1/P/R curves, `weights/best.pt`, `weights/last.pt`.
+
+Run folder:
+
+```text
+runs/segment/SkinSeg_YOLO26_P2_CBAM_QuickSmoke_F001_E1_P2ProtoFix
+```
+
+Dong `results.csv` epoch 1:
+
+```csv
+epoch,time,train/box_loss,train/seg_loss,train/cls_loss,train/dfl_loss,train/sem_loss,metrics/precision(B),metrics/recall(B),metrics/mAP50(B),metrics/mAP50-95(B),metrics/precision(M),metrics/recall(M),metrics/mAP50(M),metrics/mAP50-95(M),val/box_loss,val/seg_loss,val/cls_loss,val/dfl_loss,val/sem_loss,lr/pg0,lr/pg1,lr/pg2
+1,87.5608,3.89274,5.1963,40.3872,0.10638,6.2107,4e-05,0.01812,2e-05,1e-05,7e-05,0.0307,5e-05,1e-05,4.7059,5.02998,3.18339,0.1327,0,0.00071811,0.00071811,0.00071811
+```
+
+Nhan dinh:
+
+- Day la smoke/sanity result, chua phai ket qua de bao cao trong paper vi chi 1 epoch va 1% train.
+- Du de xac nhan pipeline YOLO26n P2-CBAM + dataset + validation segmentation da chay duoc.
+- Buoc tiep theo de co so nhanh hon: chay 5 epoch voi `fraction=0.10`, batch 8 neu VRAM on.
+
+### Quick result 5 epoch tren 10% train
+
+Lenh:
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe 03_train_p2_cbam.py --epochs 5 --fraction 0.10 --batch 8 --workers 0 --name SkinSeg_YOLO26_P2_CBAM_QuickResult_F010_E5
+```
+
+Ket qua:
+
+- Exit code 0.
+- Train subset: 3.188 images.
+- Val: 998 images, 998 instances.
+- Batch: 8.
+- Model: `cbam.P2CompatibleSegment26`, 404 layers, 3.108.803 parameters, 14.0 GFLOPs.
+- Hoan thanh 5 epochs trong 0.442 gio.
+- Output:
+  - `runs/segment/SkinSeg_YOLO26_P2_CBAM_QuickResult_F010_E5/results.csv`;
+  - `runs/segment/SkinSeg_YOLO26_P2_CBAM_QuickResult_F010_E5/weights/best.pt`;
+  - `runs/segment/SkinSeg_YOLO26_P2_CBAM_QuickResult_F010_E5/weights/last.pt`;
+  - plots/confusion/PR/F1/P/R curves va val prediction images.
+
+Bang metric theo epoch tu `results.csv`:
+
+| epoch | time_s | box_mAP50 | box_mAP50_95 | mask_mAP50 | mask_mAP50_95 |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 338.727 | 0.05535 | 0.02419 | 0.05691 | 0.03538 |
+| 2 | 657.899 | 0.11509 | 0.05668 | 0.11258 | 0.07699 |
+| 3 | 978.010 | 0.13321 | 0.06770 | 0.13300 | 0.09409 |
+| 4 | 1313.530 | 0.15873 | 0.10521 | 0.15756 | 0.11571 |
+| 5 | 1589.990 | 0.16915 | 0.10657 | 0.16338 | 0.11811 |
+
+Final validation per class tu console:
+
+| class | images | box_mAP50 | box_mAP50_95 | mask_mAP50 | mask_mAP50_95 |
+|---|---:|---:|---:|---:|---:|
+| all | 998 | 0.169 | 0.107 | 0.163 | 0.118 |
+| akiec | 32 | 0.034 | 0.0171 | 0.0402 | 0.0196 |
+| bcc | 51 | 0.101 | 0.0347 | 0.0649 | 0.0273 |
+| bkl | 109 | 0.149 | 0.0884 | 0.149 | 0.0981 |
+| df | 11 | 0.0433 | 0.0210 | 0.0310 | 0.0204 |
+| mel | 111 | 0.116 | 0.0776 | 0.117 | 0.0881 |
+| nv | 670 | 0.728 | 0.501 | 0.730 | 0.567 |
+| vasc | 14 | 0.0116 | 0.00639 | 0.0116 | 0.00605 |
+
+Nhan dinh:
+
+- Day la ket qua nhap nhanh, chua phai final paper vi chi dung 10% train va 5 epoch.
+- Pipeline da train/validate duoc, metric tang deu tu epoch 1 den 5.
+- Neu can co bang hoi nghi trong hom nay: tiep theo nen chay full train 30-50 epoch qua dem hoac it nhat `fraction=1.0`, 10-20 epoch de lay baseline nghiem tuc.
+
+### Sua Python 3.9 compatibility cho geometry tests
+
+Khi chay full suite bang env train `vungcam_2026`:
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe -m pytest -q
+```
+
+Ket qua ban dau:
+
+- collection error o `data_processing/paired_geometry.py`;
+- Python 3.9 khong ho tro runtime annotation `float | None` neu thieu `from __future__ import annotations`;
+- 3 collection errors: `test_paired_geometry.py`, `test_paired_geometry_audit.py`, `test_view_transform.py`.
+
+Fix:
+
+- Them `from __future__ import annotations` vao `data_processing/paired_geometry.py`.
+
+Verification focused:
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe -m pytest tests/test_paired_geometry.py tests/test_view_transform.py tests/test_paired_geometry_audit.py -q
+python -m py_compile data_processing\paired_geometry.py
+```
+
+Ket qua:
+
+- geometry/audit/view suite: 88 passed;
+- `py_compile`: exit code 0.
+
+### Sua Python 3.9 compatibility cho audit_dataset
+
+Full suite trong env `vungcam_2026` sau fix `paired_geometry.py` con 1 failure:
+
+```text
+TypeError: zip() takes no keyword arguments
+```
+
+Vi tri:
+
+- `data_processing/audit_dataset.py`, dong xu ly `dict(zip(SPLITS, values, strict=True))`.
+
+Root cause:
+
+- `zip(strict=True)` chi co tu Python 3.10, trong khi env train `vungcam_2026` dung Python 3.9.23.
+
+Fix:
+
+- Thay `zip(strict=True)` bang check do dai thu cong:
+  - neu so gia tri `--expected-counts` khac so split thi raise `ValueError`;
+  - neu dung thi `dict(zip(SPLITS, values))`.
+
+Verification focused:
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe -m pytest tests/test_data_pipeline.py -k report_path_safety -q
+python -m py_compile data_processing\audit_dataset.py
+```
+
+Ket qua:
+
+- focused test: 1 passed, 52 deselected;
+- `py_compile`: exit code 0.
+
+### Full verification sau cac fix train nhanh
+
+Lenh:
+
+```powershell
+$env:PYTHONIOENCODING='utf-8'
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe -m pytest -q
+```
+
+Ket qua:
+
+- exit code 0;
+- 153 passed, 1 skipped trong 94.18 giay.
+
+Ghi chu:
+
+- Sau pytest van co `PermissionError` o `pytest-current` trong atexit cua Windows/conda, nhung command exit code 0 va test summary da pass.
+- Khong dua thu muc `runs/` hoac weights vao GitHub; chi sync source/test/docs/log.

@@ -162,9 +162,34 @@ def _cleanup_runtime_yaml(path, original_exception=None):
             raise
 
 
+def _positive_int(value):
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
+def _nonnegative_int(value):
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be a nonnegative integer")
+    return parsed
+
+
+def _fraction(value):
+    parsed = float(value)
+    if not 0.0 < parsed <= 1.0:
+        raise argparse.ArgumentTypeError("must be in the range (0, 1]")
+    return parsed
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train SkinSeg-YOLO26n-P2-CBAM")
     parser.add_argument("--epochs", type=int, default=300, help="Training epochs (default: 300)")
+    parser.add_argument("--fraction", type=_fraction, default=1.0, help="Dataset fraction for quick checks (default: 1.0)")
+    parser.add_argument("--batch", type=_positive_int, default=None, help="Override batch size")
+    parser.add_argument("--workers", type=_nonnegative_int, default=None, help="Override dataloader workers")
+    parser.add_argument("--name", default=None, help="Override Ultralytics run name")
     args = parser.parse_args()
     require_yolo26_support()
     model_yaml = SCRIPT_DIR / "models" / "yolo26n-seg-p2-cbam.yaml"
@@ -178,8 +203,11 @@ def main():
         load_partial_pretrained(model, weights)
         device = 0 if torch.cuda.is_available() else "cpu"
         is_windows = platform.system() == "Windows"
-        workers = 0 if is_windows else (8 if device == 0 else 0)
-        batch_size = 8 if is_windows else (32 if device == 0 else 8)
+        workers = args.workers if args.workers is not None else (0 if is_windows else (8 if device == 0 else 0))
+        batch_size = args.batch if args.batch is not None else (8 if is_windows else (32 if device == 0 else 8))
+        run_name = args.name or (
+            "SkinSeg_YOLO26_P2_CBAM_Conference" if args.epochs > 20 else "SkinSeg_YOLO26_P2_CBAM_Test"
+        )
         model.train(
             data=str(runtime_yaml), epochs=args.epochs, batch=batch_size, imgsz=640,
             device=device, workers=workers, cos_lr=True,
@@ -188,8 +216,8 @@ def main():
             mosaic=1.0, mixup=0.1, copy_paste=0.1, flipud=0.5,
             degrees=180.0, scale=0.5,
             project=str(SCRIPT_DIR / "runs" / "segment"),
-            name="SkinSeg_YOLO26_P2_CBAM_Conference" if args.epochs > 20 else "SkinSeg_YOLO26_P2_CBAM_Test",
-            exist_ok=True, val=True,
+            name=run_name,
+            exist_ok=True, val=True, fraction=args.fraction, mask_ratio=2,
         )
     except BaseException as exc:
         original_exception = exc

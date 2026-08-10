@@ -1,4 +1,5 @@
 """Small, dependency-free helpers for paired segmentation geometry."""
+from __future__ import annotations
 
 from dataclasses import dataclass
 import math
