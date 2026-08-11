@@ -2039,3 +2039,102 @@ Nếu code, split, raw predictions và bảng thống kê xác nhận đúng cá
 LiDARGuard là dự án **đánh giá và điều phối độ tin cậy ở runtime**, không phải dự án cải tiến độ chính xác backbone trực tiếp. Câu mô tả một dòng phù hợp:
 
 > LiDARGuard predicts scan-level and classwise segmentation reliability from a frozen RangeRet model and selectively allocates test-time refinement to high-risk LiDAR scans under a fixed compute budget.
+
+## 2026-08-11 - Tạo workspace riêng cho hướng IJCV LiDAR
+
+Theo quyết định của tác giả, hướng LiDAR tương lai không làm theo LiDARGuard. Đã tạo workspace riêng:
+
+```text
+D:\PAPER_SPKT\LiDAR_OpenDomain_IJCV
+```
+
+Tài liệu trung tâm:
+
+```text
+D:\PAPER_SPKT\LiDAR_OpenDomain_IJCV\tailieu.md
+```
+
+Hướng làm việc được ghi nhận:
+
+> **Sensor-aware cross-sensor, prompted open-vocabulary LiDAR-only 3D detection under compound domain and category shifts, using camera/VLM supervision only during training.**
+
+Các quyết định chính:
+
+- mục tiêu venue là IJCV, không phải ICCV;
+- primary task là outdoor LiDAR 3D object detection;
+- inference chỉ dùng LiDAR và text prompts;
+- camera/VLM chỉ làm teacher trong training;
+- kiến trúc thiên về one-stage range-view hoặc range/BEV hybrid để tận dụng thế mạnh YOLO/CV;
+- gap cần kiểm chứng là source-only prompted seen/novel detection dưới compound cross-sensor/domain + category shift; không claim LiDAR-only VLM transfer tự nó là mới;
+- chưa code cho đến khi systematic review, dataset audit và Gate 1 gap reproduction đạt.
+
+Hai dự án được tách tuyệt đối. Việc tạo workspace Q1 không thay đổi code, dataset, train run hoặc experiment matrix của bài hội nghị HAM10000.
+
+## 2026-08-11 - Hướng dẫn viết Introduction khi chưa có kết quả cuối
+
+### Kết luận
+
+Có thể và nên viết Introduction ngay khi chưa có kết quả full train. Introduction chủ yếu xác lập bối cảnh, vấn đề, khoảng trống, câu hỏi nghiên cứu, phương pháp và phạm vi đóng góp. Phần này không cần chờ bảng kết quả hoàn chỉnh. Tuy nhiên, mọi phát biểu về hiệu quả phải giữ ở mức giả thuyết, mục tiêu thiết kế hoặc kế hoạch đánh giá cho đến khi có baseline, ablation và kết quả test đủ tin cậy.
+
+Dự án không hoàn toàn chưa có kết quả: smoke train 1 epoch trên 1% train và quick run 5 epoch trên 10% train đã xác nhận pipeline có thể train/validate. Quick run đạt box mAP50/mAP50-95 là 0,169/0,107 và mask mAP50/mAP50-95 là 0,163/0,118 trên validation. Các số này chỉ là sanity evidence, không phải kết quả publication vì dùng một phần dữ liệu, số epoch thấp, chưa có baseline tương ứng và chưa có ablation.
+
+### Cấu trúc Introduction đề xuất
+
+Introduction có thể triển khai thành năm đoạn:
+
+1. **Bối cảnh và ý nghĩa:** trình bày vai trò của phân đoạn thực thể tổn thương da trên ảnh dermoscopic. Không gọi bài toán là phân đoạn tế bào ung thư; đối tượng là vùng tổn thương da và polygon mang một trong bảy nhãn chẩn đoán.
+2. **Khó khăn thực tế:** nêu lông, vignetting/viền tối, biến thiên ánh sáng và màu; tổn thương nhỏ hoặc biên khó; mất chi tiết sau downsampling; và phân bố chẩn đoán mất cân bằng của HAM10000.
+3. **Khoảng trống nghiên cứu:** các head P3-P5 có thể thiếu thông tin không gian stride-4; chỉ dùng ảnh mặc định hoặc chỉ dùng ảnh đã xử lý artifact có thể không khai thác hai biểu diễn bổ trợ; hiệu quả của CBAM trên đặc trưng P2/P3 trong cấu hình YOLO26 segmentation này cần được đánh giá có kiểm soát.
+4. **Phương pháp và câu hỏi nghiên cứu:** giới thiệu custom YOLO26-based P2-P5 instance-segmentation adaptation, CBAM tại P2/P3, hai train view v1/v7 và NV-excluding image-level augmentation. Đặt câu hỏi liệu các thành phần này có cải thiện phân đoạn, đặc biệt ở tổn thương nhỏ hoặc biên khó, thay vì khẳng định trước rằng chúng có hiệu quả.
+5. **Đóng góp và tổ chức bài:** nêu đóng góp ở mức thiết kế, tích hợp và protocol đánh giá. Chỉ thêm một câu tóm tắt kết quả định lượng sau khi full experiment hoàn tất.
+
+### Ngôn ngữ an toàn trước khi có full experiment
+
+Được dùng:
+
+- `we propose`, `we present`, `we investigate`;
+- `is designed to preserve high-resolution information`;
+- `aims to improve` hoặc `is intended to reduce`;
+- `we define a controlled evaluation protocol`;
+- `will be evaluated` nếu văn bản là proposal abstract hoặc proposal paper;
+- `we hypothesize that` khi nêu tác dụng dự kiến.
+
+Không được dùng trước khi có bằng chứng:
+
+- `the proposed method improves/outperforms`;
+- `significantly improves small-lesion segmentation`;
+- `is robust to artifacts`;
+- `solves class imbalance` hoặc `guarantees class balance`;
+- `state of the art`, `the first`, `real-time`;
+- mAP, Dice, IoU, FPS hoặc tỷ lệ phần trăm từ quick run như kết quả chính thức.
+
+Nếu là abstract proposal, có thể dùng future tense. Nếu là abstract của full paper, các câu `will be evaluated` phải được thay bằng metric và kết luận chính đã được xác minh.
+
+### Contribution paragraph proposal-safe
+
+> The main contributions of this study are summarized as follows. First, we adapt the YOLO26 segmentation architecture to incorporate a stride-4 P2 prediction path, resulting in four-scale P2-P5 lesion instance segmentation. Second, CBAM is placed at the P2 and P3 stages to recalibrate high-resolution channel and spatial features. Third, we develop an artifact-oriented fixed multi-view training pipeline that combines a default letterboxed view with a deterministically processed dermoscopic view while consistently transforming polygon annotations. Finally, we establish a controlled ablation protocol to assess the individual and combined effects of the P2 branch, CBAM, multi-view preprocessing, and NV-excluding augmentation.
+
+Đoạn trên chỉ tuyên bố việc thiết kế, tích hợp và xác lập protocol; không tuyên bố từng module là phát minh mới hoặc hệ thống đã tốt hơn baseline.
+
+### Ranh giới contribution hiện tại
+
+- Được mô tả là đã triển khai: YOLO26n `C3k2`/`C2PSA`, prediction scales P2-P5, CBAM tại P2/P3, `P2CompatibleSegment26`, pipeline v1/v7, polygon transformation, NV-excluding augmentation và các công cụ audit hiện có.
+- Chưa được mô tả là contribution hoàn tất: Paired Artifact-View Consistency loss và P2 Boundary Supervision. Đây là thiết kế mở rộng trong roadmap; chỉ đưa vào paper như phương pháp đã thực hiện sau khi code, test và train tương ứng tồn tại.
+- Không claim mới ở cấp thành phần riêng lẻ: P2, CBAM, DullRazor-inspired hair removal, Gray-World, HAM10000 hoặc multiscale segmentation đều có tiền lệ. Khoảng đóng góp có thể bảo vệ nằm ở cách tích hợp và đánh giá có kiểm soát trong bài toán cụ thể.
+
+### Các điểm phải xử lý trước bản paper cuối
+
+1. Thống nhất phiên bản Ultralytics: môi trường và `requirements.txt` dùng `8.4.13`, trong khi một đoạn trong `README.md` còn ghi `8.4.60`.
+2. Công khai provenance của polygon. HAM10000 gốc là dataset classification; không để người đọc hiểu polygon là annotation gốc của HAM10000.
+3. Bổ sung metadata bệnh nhân/ca bệnh và patient-level grouped-split audit. Kiểm tra overlap theo normalized ISIC image ID hiện tại chưa chứng minh zero patient-level leakage.
+4. Chạy official YOLO26n-seg baseline và các ablation P2, CBAM, multi-view, augmentation và full model dưới cùng split, seed, epoch budget và quy tắc chọn checkpoint.
+5. Báo cáo kết quả theo lớp, kích thước tổn thương, nhóm artifact, nhiều seed và chi phí tính toán; không chỉ báo metric all-class của một run.
+6. Giữ nội dung LiDAR ở workspace riêng. Các ghi chú LiDARGuard/IJCV hiện có trong file này là nhật ký lịch sử, không được trộn vào narrative hoặc contribution của paper HAM10000.
+
+### Quy tắc cập nhật sau khi có kết quả
+
+Sau khi full train và ablation hoàn thành, quay lại sửa Introduction theo ba bước:
+
+1. Thay ngôn ngữ mục tiêu như `aims to` bằng kết luận chỉ ở những điểm được kết quả hỗ trợ.
+2. Thêm một câu kết quả ngắn ở cuối Introduction, nhất quán tuyệt đối với Abstract, Results, bảng và supplementary material.
+3. Nếu một thành phần không cải thiện hoặc chỉ cải thiện một subgroup, mô tả đúng hiệu ứng quan sát được; không giữ claim tổng quát ban đầu.
