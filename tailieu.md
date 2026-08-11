@@ -231,7 +231,7 @@ YOLO26n-seg baseline dự đoán từ P3/P4/P5, tương ứng stride 8/16/32. M�
 P2 head có ba tác dụng được kỳ vọng:
 
 1. Giảm mức mất chi tiết do downsampling vì feature map P2 chỉ giảm kích thước bốn lần so với ảnh đầu vào.
-2. Cung cấp tín hiệu có độ phân giải cao hơn cho mask prototype và mask coefficients của `Segment26`.
+2. Cung cấp vị trí dự đoán và mask coefficients ở stride 4 cho `Segment26`. Trong implementation hội nghị hiện tại, prototype mask không nhận trực tiếp P2 mà được tạo từ P3–P5 rồi upsample về stride 4; vì vậy không claim P2 trực tiếp sinh hoặc tinh chỉnh prototype.
 3. Tạo điều kiện mô tả tốt hơn các tổn thương nhỏ, đường biên bất quy tắc hoặc chuyển tiếp màu yếu.
 
 Không được viết rằng P2 “chắc chắn cải thiện” hoặc “phân đoạn tới từng pixel chính xác hơn” trước khi có ablation B0–B1. P2 cũng làm tăng số điểm dự đoán, bộ nhớ và chi phí tính toán; phải báo params, FLOPs, latency và VRAM thực tế.
@@ -1772,3 +1772,270 @@ GitHub sync verification truoc commit:
 - `pytest tests/test_model_architecture.py -q`: 14 passed.
 - `pip install --dry-run --no-deps -r requirements.txt`: exit code 0, tat ca package da satisfied.
 - `git diff --check`: exit code 0.
+- Commit/push len GitHub:
+  - commit `b82365f` - `chore: add training requirements and quiet progress`;
+  - push thanh cong len `origin/main`: `37f780e..b82365f`.
+
+## 2026-08-11 - Ghi nhận hướng LiDAR Q1 và rà abstract hội nghị
+
+### Tách riêng ý tưởng LiDAR
+
+Đã tạo roadmap tương lai tại:
+
+```text
+D:\PAPER_SPKT\LiDAR_Q1_Roadmap.md
+```
+
+Hướng được ghi nhận là **uncertainty-calibrated domain generalization for LiDAR semantic segmentation under adverse weather and sensor degradation**. Roadmap này tách biệt với dự án HAM10000; không đổi hướng hoặc làm chậm bài hội nghị da liễu hiện tại.
+
+### Trạng thái kết quả trước khi viết abstract
+
+- Run `SkinSeg_YOLO26_P2_CBAM_QuickResult_F010_E5` chỉ dùng fraction 0,10 và 5 epoch; đây là quick/smoke evidence, không phải kết quả publication cuối.
+- Run `SkinSeg_YOLO26_P2_CBAM_Conference_E30` hiện mới thấy `args.yaml`, chưa có `results.csv` trong lần rà này.
+- Vì vậy chưa chèn mAP/Dice/FPS vào abstract. Nếu form tối nay là proposal abstract, dùng future tense `will be evaluated` là trung thực. Nếu là abstract của full paper, phải thay đoạn cuối bằng số liệu thực sau khi full train và test hoàn tất.
+
+### Lỗi và điểm cần sửa trong bản abstract được gửi
+
+1. `SkinSeg-YOLO26-P2Attn` không nói rõ attention là CBAM và không thống nhất với tên code P2-CBAM; dùng `SkinSeg-YOLO26-P2CBAM` hoặc bỏ tên riêng.
+2. `vignette oriented cropping` nên đổi thành `vignetting-aware ROI cropping`.
+3. Viết `images not belonging to the majority nevus (NV) class` để mô tả đúng NV-excluding image-level augmentation.
+4. Không giữ các dấu nối do xuống dòng PDF như `preprocess-ing`, `Poly-gon`, `in-stance`.
+5. `Index Terms—ttention mechanism` thiếu chữ A và `instance segment` chưa hoàn chỉnh.
+6. Cần công khai nguồn/provenance của polygon trong Method; HAM10000 gốc là dataset classification nên không được để người đọc hiểu nhầm polygon là annotation gốc của HAM10000.
+7. Với bản full paper, câu `will be evaluated` bắt buộc được thay bằng kết quả định lượng và kết luận chính.
+
+### Abstract proposal-safe đã hiệu đính
+
+> Skin lesion instance segmentation remains challenging because dermoscopic images frequently contain hair, dark peripheral borders, illumination variations, and fine lesion boundaries that may be degraded by feature downsampling. We present SkinSeg-YOLO26-P2CBAM, an Ultralytics YOLO26n-based framework that combines high-resolution feature prediction with artifact-oriented multi-view dermoscopic preprocessing. The standard P3–P5 segmentation pyramid is extended with a stride-4 P2 prediction branch, producing four-scale P2–P5 outputs. CBAM is inserted after the P2 and P3 backbone stages to recalibrate early channel and spatial features. During training, each source image is represented by a default letterboxed view and a deterministically processed view generated using vignetting-aware ROI cropping, DullRazor-inspired hair removal, Gray-World color constancy, and letterboxing. Polygon annotations are transformed consistently through the crop, resize, and padding operations. Additional geometric and photometric augmentation is applied only to images not belonging to the majority nevus (NV) class. The framework will be evaluated on a seven-class HAM10000-derived polygon dataset using controlled ablations of the P2 branch, CBAM, multi-view preprocessing, and NV-excluding augmentation. Evaluation will assess mask accuracy, boundary quality, class-wise performance, and computational cost.
+
+Index terms đề xuất:
+
+> **Index Terms—Attention mechanisms, dermoscopic imaging, instance segmentation, multi-view learning, skin lesion segmentation, YOLO26.**
+
+Tên paper đang được ưu tiên:
+
+> **Fine-Scale Skin Lesion Instance Segmentation via Multi-View Learning and a CBAM-Refined P2 Head in YOLO26**
+
+## 2026-08-11 - Xác minh P2 head có tương thích với YOLO26 hay không
+
+> [!IMPORTANT]
+> **KẾT LUẬN KIẾN TRÚC:** P2 head hiện tại tương thích với YOLO26 đã pin. Model giữ `end2end=True`, `reg_max=1`, `C3k2`, `C2PSA` và `Segment26`; P2 không đưa DFL cũ trở lại và không biến model thành YOLO12.
+
+> [!WARNING]
+> **CÁCH CLAIM TRONG PAPER:** đây là custom YOLO26-based P2–P5 instance-segmentation adaptation. Không gọi nó là official YOLO26-P2 segmentation và không nói P2 trực tiếp tạo mask prototype.
+
+### Kết luận
+
+P2 head trong `models/yolo26n-seg-p2-cbam.yaml` **tương thích về kiến trúc và runtime với YOLO26 đang dùng**. Đây không phải việc mang nguyên head YOLOv8/YOLO12 sang YOLO26. Neck P2–P5 bám theo topology `yolo26-p2.yaml` chính thức của Ultralytics, sau đó đổi head cuối từ `Detect` sang biến thể `Segment26` hỗ trợ bốn scale.
+
+### Đối chiếu với cấu hình YOLO26 cục bộ
+
+Môi trường kiểm tra:
+
+```text
+ultralytics==8.4.13
+```
+
+Các file Ultralytics cục bộ xác nhận:
+
+- `cfg/models/26/yolo26-p2.yaml` là cấu hình detection chính thức với output P2/P3/P4/P5;
+- `cfg/models/26/yolo26-seg.yaml` là cấu hình segmentation chính thức với output P3/P4/P5;
+- `Segment26` nhận số scale động từ `len(ch)`, nên detection/mask-coefficient branches có thể nhận bốn feature maps;
+- `Proto26` hợp nhất nhiều scale nhưng mặc định lấy feature đầu vào đầu tiên làm mốc rồi upsample prototype.
+
+Các đặc tính YOLO26 vẫn được giữ trong YAML tùy biến:
+
+| Đặc tính YOLO26 | Trạng thái |
+|---|---|
+| `end2end: True` | Giữ nguyên; head có cả one-to-many và one-to-one branches |
+| `reg_max: 1` | Giữ nguyên; `DFL` trở thành `Identity`, không đưa DFL cũ trở lại |
+| `C3k2` backbone/neck | Giữ nguyên |
+| `C2PSA` và `SPPF` | Giữ nguyên |
+| `Segment26` | Giữ nguyên contract, mở rộng lên bốn prediction scales |
+| P2–P5 strides | Đúng `[4, 8, 16, 32]` |
+
+Việc thêm P2 chỉ thêm đường đặc trưng và prediction scale stride 4; nó không khôi phục các thành phần YOLO26 đã loại bỏ như distributional DFL khi `reg_max=1`, và không tắt end-to-end mode.
+
+### Vì sao cần `P2CompatibleSegment26`
+
+Nếu đưa thẳng bốn input P2–P5 vào `Proto26` mặc định, P2 sẽ trở thành feature mốc và lớp `Proto` tiếp tục upsample, tạo prototype ở stride 2. Điều này từng gây lệch kích thước giữa predicted masks và ground-truth masks.
+
+`cbam.py` hiện xử lý có chủ đích:
+
+```text
+P2, P3, P4, P5 -> Detect/Segment26 prediction branches
+P3, P4, P5     -> Proto26 -> prototype 160 x 160 khi input 640
+```
+
+Do đó:
+
+- P2 vẫn tạo prediction locations và mask coefficients ở stride 4;
+- prototype được tạo từ P3–P5 và upsample về stride 4;
+- Với input 640, prototype native đã được kiểm tra là 160 × 160 (stride 4). `mask_ratio=2` hiện làm dataset chuẩn bị target mask ở độ phân giải cao hơn; loss Ultralytics 8.4.13 nội suy prototype khi target và prototype khác kích thước. Smoke train đã chạy thành công, nên đây không phải lỗi tương thích. Tuy nhiên `mask_ratio=2` là một hyperparameter huấn luyện riêng, không phải điều kiện để P2 hoạt động sau proto fix; phải giữ giống nhau giữa các ablation và ghi rõ trong Method. Có thể đánh giá lại `mask_ratio=4` trước thí nghiệm cuối nếu ưu tiên contract mặc định/tốc độ.
+
+### Runtime evidence
+
+Khởi tạo model và forward tensor `1 x 3 x 640 x 640` cho kết quả:
+
+```text
+head_class = P2CompatibleSegment26
+nl = 4
+stride = [4.0, 8.0, 16.0, 32.0]
+reg_max = 1
+end2end = True
+dfl = Identity
+head_from = [21, 24, 27, 30]
+detections shape = (1, 300, 38)
+prototype shape = (1, 32, 160, 160)
+one2many feature scales = 4
+one2one feature scales = 4
+parameters = 3,108,803
+```
+
+### Cách viết chính xác trong paper
+
+Được viết:
+
+> The YOLO26 segmentation neck is extended with a stride-4 P2 prediction path, yielding four P2–P5 detection and mask-coefficient scales while retaining the end-to-end Segment26 formulation. Mask prototypes remain at stride 4 and are generated from fused P3–P5 features.
+
+Không viết:
+
+- “P2 restores DFL”;
+- “P2 modifies the YOLO26 end-to-end mechanism”;
+- “P2 directly generates the mask prototypes”;
+- “P2 is an official YOLO26 segmentation model.”
+
+Cách gọi đúng là **custom YOLO26-based P2–P5 instance-segmentation adaptation**. Ultralytics có official YOLO26-P2 detection topology, còn việc thích nghi nó sang `Segment26` bốn mức là phần triển khai của dự án.
+
+### Ghi chú phiên bản
+
+`requirements.txt` đang pin `ultralytics==8.4.13` và phiên bản này đã được xác minh có `Segment26`. Thông báo lỗi trong `03_train_p2_cbam.py` hiện gợi ý `8.4.60`; đây là một bất nhất câu thông báo cần sửa sau, nhưng không ảnh hưởng model đang chạy với dependency đã pin.
+
+### Verification sau khi rà kiến trúc
+
+Lần chạy pytest đầu tiên dùng temp mặc định của Windows:
+
+```powershell
+python -m pytest -p no:cacheprovider tests/test_model_architecture.py -q
+```
+
+Kết quả: 8 passed, 6 setup errors. Cả sáu error đều phát sinh trước test body tại `C:\Users\zinnn\AppData\Local\Temp\pytest-of-zinnn` với `PermissionError: [WinError 5]`; không có assertion kiến trúc nào fail.
+
+Chạy lại với basetemp riêng nằm trong workspace:
+
+```powershell
+python -m pytest -p no:cacheprovider --basetemp D:\PAPER_SPKT\Ham1000_p2_CBAM\.pytest_p2_verify_20260811 tests/test_model_architecture.py -q
+```
+
+Kết quả xác nhận:
+
+```text
+14 passed in 6.96s
+exit code 0
+```
+
+Kết hợp với forward 640 × 640 thành công và bốn stride đúng, không thấy compatibility blocker giữa P2 head tùy biến và YOLO26/Segment26 đã pin.
+
+## 2026-08-11 - Phân tích Introduction của dự án LiDARGuard được cung cấp
+
+File đã đọc đầy đủ:
+
+```text
+C:\Users\zinnn\.codex\attachments\6e114e03-4c69-4c52-b690-7d05333226f4\pasted-text.txt
+```
+
+### Dự án này thực chất làm gì?
+
+> [!IMPORTANT]
+> **LiDARGuard không phải một backbone LiDAR semantic segmentation mới.** Nó là một lớp giám sát độ tin cậy hậu xử lý gắn lên một RangeRet đã train và đóng băng. Mục tiêu là dự đoán khi nào kết quả segmentation của cả scan có khả năng sai, sau đó chỉ cấp thêm compute để sửa các scan rủi ro.
+
+Luồng hệ thống:
+
+```text
+LiDAR scan
+  -> frozen RangeRet
+  -> pointwise semantic prediction
+  -> global statistics + six-channel spatial risk map
+  -> LiDARGuard quality/failure estimators
+  -> scan-level mIoU estimate + classwise quality + risk ranking + failure probability
+  -> fixed budget scheduler
+  -> only low-confidence scans receive circular-shift TTA + range-space kNN refinement
+```
+
+Đầu vào Guard gồm hai nhóm:
+
+1. **Global statistics:** maximum softmax probability, prediction margin, entropy, class composition, point density, range distribution, remission, occupancy và geometric–semantic boundary disagreement.
+2. **Spatial representation:** risk map sáu kênh giữ vị trí uncertainty, range discontinuity, semantic boundary, boundary mismatch và valid observations.
+
+Guard dùng statistics-anchored neural residual model: statistical anchors cho dự đoán tham chiếu dễ audit; neural residual bị giới hạn để cải thiện dự đoán nhưng không lệch vô hạn. Các model chuyên biệt dự đoán quality/ranking/failure, sau đó failure probability được calibration bằng temperature scaling và calibration-only rank-quantile transport. Ba Guard seed được ensemble nhưng dùng chung một segmentation backbone.
+
+### Bài toán khoa học của LiDARGuard
+
+Introduction lập luận rằng mIoU trên clean test set chưa đủ cho hệ thống an toàn. Khi gặp sparsity, missing returns, motion, weather, sensor artifact hoặc range-dependent sampling, model có thể dự đoán sai nhưng vẫn rất tự tin. LiDARGuard vì vậy giải quyết ba câu hỏi:
+
+1. Chất lượng segmentation của toàn scan hiện tại ước lượng là bao nhiêu khi không có ground truth lúc deploy?
+2. Scan này có nguy cơ failure hay không, và nên được xếp hạng rủi ro ở vị trí nào?
+3. Với ngân sách compute cố định, scan nào đáng được chạy thêm TTA và kNN refinement?
+
+Đây là hướng **post-hoc reliability monitoring + calibrated failure prediction + budgeted selective refinement**, khác với hướng `RiskLiDAR` đã ghi ở roadmap trước đó. `RiskLiDAR` tập trung huấn luyện chính segmentation backbone để robust/calibrated hơn; LiDARGuard giữ backbone frozen và xây guard/scheduler bên ngoài. Hai hướng có thể bổ sung nhau nhưng không được mô tả là cùng một contribution.
+
+### Thiết kế thí nghiệm được nêu trong Introduction
+
+- Dataset: SemanticPOSS.
+- Split theo sequence cho train/calibration/test.
+- Test: 500 base scans độc lập.
+- Mỗi base scan có clean + 6 corruption families × 3 severity = 19 conditions; tổng 9.500 scan conditions.
+- Hai corruption families được giữ hoàn toàn khỏi Guard training/calibration để đo unseen-corruption generalization.
+- Ba seed, mười ablation, frozen statistical baselines.
+- Clustered bootstrap theo base scan và Holm correction cho multiple endpoints.
+- Đo latency, parameter count, throughput và peak memory.
+
+Các kết quả được Introduction tuyên bố:
+
+| Endpoint | LiDARGuard |
+|---|---:|
+| Scan-quality MAE | 0,0400 |
+| R² | 0,8114 |
+| Spearman correlation | 0,9003 |
+| Failure AUROC | 0,9502 |
+| Failure AUPR | 0,8225 |
+| Brier score | 0,0631 |
+| ECE | 0,0160 |
+
+So với matched frozen statistical baselines, Introduction claim MAE giảm từ 0,0594 xuống 0,0400; failure AUPR tăng từ 0,7743 lên 0,8225; Brier giảm từ 0,0719 xuống 0,0631; bốn primary endpoints còn significant sau Holm correction với adjusted `p <= 0,0064`. Selective refinement được claim cải thiện mIoU có ý nghĩa thống kê ở budget 10–50%.
+
+### Đánh giá ban đầu
+
+Nếu code, split, raw predictions và bảng thống kê xác nhận đúng các con số trên, đây là một thiết kế paper mạnh hơn một bài chỉ thêm attention vào backbone. Điểm mạnh là bài toán vận hành rõ, backbone frozen, calibration/test tách biệt, compute budget rõ, nhiều corruption/severity, unseen families và thống kê theo independent base scan.
+
+> [!WARNING]
+> **INTRODUCTION KHÔNG ĐỦ ĐỂ XÁC NHẬN KẾT QUẢ HOẶC Q1.** Tất cả metric hiện chỉ là claim trong văn bản được cung cấp. Trước khi dùng hoặc đánh giá publication readiness phải kiểm tra code, manifest split, checkpoint, prediction files, corruption generator, seed outputs và script bootstrap/Holm.
+
+### Các publication blocker/câu hỏi phản biện cần kiểm tra
+
+1. **Target construction:** Guard train cần ground-truth scan mIoU/classwise IoU; phải chỉ rõ target được tạo ở train/calibration ra sao và không dùng test labels để fit.
+2. **Leakage:** mọi corruption variant của cùng base scan phải ở cùng split; không được để clean scan ở train nhưng corruption của nó ở calibration/test.
+3. **Sequence independence:** cần công bố sequence IDs cụ thể và chứng minh không overlap.
+4. **Corruption protocol:** công thức, severity và random seed của cả sáu families phải tái lập; hai withheld families phải được chọn trước khi xem test result.
+5. **Calibration isolation:** asymmetric projection, temperature và rank-quantile transport chỉ được fit/chọn trên calibration split rồi freeze.
+6. **Failure definition:** threshold tạo nhãn failure phải được định nghĩa trước và sensitivity analysis cần cho thấy kết luận không phụ thuộc một threshold tiện lợi.
+7. **Selective policy:** budget và low-confidence scheduler phải cố định từ calibration; TTA/kNN không được dùng test ground truth hoặc tune theo test.
+8. **Baseline fairness:** statistical baselines và neural Guard phải dùng cùng input information, split, target và ensemble accounting.
+9. **Compute accounting:** báo cả chi phí backbone, Guard, ensemble và phần refinement theo từng budget; không chỉ báo overhead Guard.
+10. **Statistical unit:** bootstrap theo 500 base scans là hợp lý hơn bootstrap 9.500 conditions như thể độc lập; code phải đúng clustering này.
+11. **Novelty search:** phải rà riêng scan-level quality prediction, LidarMetaSeg, selective inference, failure detection/calibration và corruption robustness trước khi claim mới.
+12. **External validation:** chỉ SemanticPOSS có thể bị phản biện là hẹp; một cross-dataset hoặc backbone thứ hai sẽ làm hồ sơ Q1 mạnh hơn.
+
+### Lỗi trình bày nhìn thấy ngay
+
+- Dấu nối do xuống dòng PDF như `fun-damental`, `selec-tively`, `archi-tecture` phải được loại khi dùng source editable.
+- Dòng `Corresponding author` đang chen giữa đoạn văn, cần đưa về footnote/template đúng vị trí.
+- `Section ??` phải được thay bằng cross-reference hợp lệ trước khi compile bản cuối.
+- Kiểm tra đủ bibliography [1]–[11], đúng tên RangeRet/Robo3D/LidarMetaSeg và đúng claim tương ứng.
+- Các số liệu trong Introduction nên nhất quán tuyệt đối với Abstract, Results, tables và supplementary material.
+
+### Kết luận định hướng
+
+LiDARGuard là dự án **đánh giá và điều phối độ tin cậy ở runtime**, không phải dự án cải tiến độ chính xác backbone trực tiếp. Câu mô tả một dòng phù hợp:
+
+> LiDARGuard predicts scan-level and classwise segmentation reliability from a frozen RangeRet model and selectively allocates test-time refinement to high-risk LiDAR scans under a fixed compute budget.
