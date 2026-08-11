@@ -1644,3 +1644,131 @@ Commit/push:
 
 - commit `4a957ef` - `fix: enable fast P2-CBAM training validation`;
 - push thanh cong len `origin/main`: `64b98b0..4a957ef`.
+
+## 2026-08-11 - Requirements va quiet train log truoc khi chay full train
+
+Yeu cau moi cua anh:
+
+- Tao/kiem tra file `requirements.txt` de chuan bi train.
+- Khi train khong in progress/log theo tung 1% hoac tung batch qua nhieu; chi can log gon theo epoch/summary de de doc.
+
+Kiem tra ban dau:
+
+- Thu muc `D:\PAPER_SPKT\Ham1000_p2_CBAM` chua co `requirements.txt`.
+- Repo goc khong co `.codegraph`, nen khong dung CodeGraph.
+- Env train that:
+  - Python 3.9.23;
+  - `torch==2.6.0+cu124`;
+  - `torchvision==0.21.0+cu124`;
+  - `ultralytics==8.4.13`;
+  - CUDA runtime torch: 12.4;
+  - `torch.cuda.is_available()` tra ve `True`.
+
+Thay doi code train:
+
+- Trong `03_train_p2_cbam.py`, them:
+
+```python
+os.environ.setdefault("YOLO_VERBOSE", "false")
+```
+
+- Dong nay duoc dat truoc `from ultralytics import YOLO` vi Ultralytics doc bien moi truong `YOLO_VERBOSE` ngay luc import.
+- Trong `model.train(...)`, them:
+
+```python
+verbose=False
+```
+
+Tac dung:
+
+- Tat TQDM/progress bar spam cua Ultralytics theo tung batch/phan tram.
+- Console van co the in cac thong tin quan trong nhu model summary, epoch summary, validation/result summary.
+- Muc tieu la train de doc hon, khong bi roi boi dong log 1%, 2%, 3%...
+
+TDD cho quiet log:
+
+RED:
+
+```powershell
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe -m pytest tests/test_model_architecture.py -k "progress or fast_run_controls" -q
+```
+
+Ket qua RED:
+
+- 2 failed:
+  - chua co `os.environ.setdefault("YOLO_VERBOSE", "false")` truoc import Ultralytics;
+  - `model.train(...)` chua truyen `verbose=False`.
+
+GREEN sau khi sua:
+
+```powershell
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe -m pytest tests/test_model_architecture.py -k "progress or fast_run_controls" -q
+```
+
+Ket qua:
+
+- 2 passed, 12 deselected.
+
+Verification requirements:
+
+```powershell
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe -m pip install --dry-run --no-deps -r requirements.txt
+```
+
+Ket qua:
+
+- Exit code 0.
+- Tat ca package trong `requirements.txt` deu `Requirement already satisfied` trong env `vungcam_2026`.
+
+Import check:
+
+```powershell
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe -c "import torch, torchvision, ultralytics, cv2, numpy, albumentations, yaml, tqdm, matplotlib, pandas, PIL, scipy, pytest; print('requirements imports ok'); print('torch', torch.__version__, 'cuda', torch.version.cuda, 'cuda_available', torch.cuda.is_available())"
+```
+
+Ket qua:
+
+- `requirements imports ok`;
+- `torch 2.6.0+cu124 cuda 12.4 cuda_available True`.
+
+Ghi chu:
+
+- Khi import `albumentations`, thu vien nay tu check version online va co the in `ERROR:albumentations.check_version:Error fetching version info` do SSL cua Windows store. Lenh van exit code 0, khong phai loi train.
+- Khi chay pytest tren Windows/conda, doi khi xuat hien `PermissionError` voi `pytest-current` trong atexit sau khi summary da pass. Neu exit code 0 va summary pass thi khong phai loi source.
+
+Focused verification:
+
+```powershell
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe -m pytest tests/test_model_architecture.py -q
+```
+
+Ket qua:
+
+- 14 passed.
+
+Lenh train de anh chay tiep:
+
+```powershell
+cd D:\PAPER_SPKT\Ham1000_p2_CBAM
+$env:PYTHONIOENCODING='utf-8'
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe 03_train_p2_cbam.py --epochs 30 --fraction 1.0 --batch 8 --workers 0 --name SkinSeg_YOLO26_P2_CBAM_Conference_E30
+```
+
+Neu anh muon cai moi package tu file moi:
+
+```powershell
+cd D:\PAPER_SPKT\Ham1000_p2_CBAM
+& C:\Users\zinnn\miniconda3\envs\vungcam_2026\python.exe -m pip install -r requirements.txt
+```
+
+GitHub sync verification truoc commit:
+
+- Sync sang repo `D:\PAPER_SPKT\SPKT_PAPER_sync` cac file:
+  - `03_train_p2_cbam.py`;
+  - `tests/test_model_architecture.py`;
+  - `requirements.txt`;
+  - `tailieu.md`.
+- `python -m py_compile 03_train_p2_cbam.py tests\test_model_architecture.py`: exit code 0.
+- `pytest tests/test_model_architecture.py -q`: 14 passed.
+- `pip install --dry-run --no-deps -r requirements.txt`: exit code 0, tat ca package da satisfied.
+- `git diff --check`: exit code 0.

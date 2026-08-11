@@ -6,6 +6,8 @@ from pathlib import Path
 import tempfile
 import warnings
 
+os.environ.setdefault("YOLO_VERBOSE", "false")
+
 import torch
 import yaml
 from ultralytics import YOLO
@@ -218,6 +220,7 @@ def main():
             project=str(SCRIPT_DIR / "runs" / "segment"),
             name=run_name,
             exist_ok=True, val=True, fraction=args.fraction, mask_ratio=2,
+            verbose=False,
         )
     except BaseException as exc:
         original_exception = exc

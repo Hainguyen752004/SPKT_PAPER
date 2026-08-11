@@ -190,6 +190,14 @@ def test_portable_dataset_path():
     assert config["path"] == "data/dataset_yolo_aug_p2_cbam"
 
 
+def test_train_disables_ultralytics_progress_before_import():
+    source = (ROOT / "03_train_p2_cbam.py").read_text(encoding="utf-8")
+    quiet_line = 'os.environ.setdefault("YOLO_VERBOSE", "false")'
+    import_line = "from ultralytics import YOLO"
+    assert quiet_line in source
+    assert source.index(quiet_line) < source.index(import_line)
+
+
 def test_train_cli_overrides_fast_run_controls(tmp_path, monkeypatch):
     train = load_training_module()
     runtime_yaml = tmp_path / "runtime.yaml"
@@ -228,4 +236,5 @@ def test_train_cli_overrides_fast_run_controls(tmp_path, monkeypatch):
     assert train_calls[0]["workers"] == 0
     assert train_calls[0]["name"] == "quick_smoke"
     assert train_calls[0]["mask_ratio"] == 2
+    assert train_calls[0]["verbose"] is False
     assert not runtime_yaml.exists()
