@@ -124,3 +124,4 @@ Latest quick sanity result, not a paper-final number:
 - validation: 998 images;
 - final all-class box mAP50/mAP50-95: `0.169` / `0.107`;
 - final all-class mask mAP50/mAP50-95: `0.163` / `0.118`.
+# Link data đã qua xử lý: https://drive.google.com/drive/folders/1IS6OgI09ObETh5i4ilWGFpMkITq2vCgk
