@@ -1,4 +1,4 @@
-# SkinSeg-YOLO26-P2Attn
+# Fine-Scale Skin Lesion Instance Segmentation via Multi-View Learning and a CBAM-Refined P2 Head in YOLO26
 
 Mã nguồn thử nghiệm cho **phân đoạn thể hiện (instance segmentation) tổn thương da** với hướng nghiên cứu: đánh giá độ bền trước artifact và attention trên đặc trưng độ phân giải cao. Đây là giả thuyết cần kiểm chứng, không phải kết quả đã được xác nhận.
 
