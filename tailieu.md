@@ -2505,3 +2505,67 @@ Câu future work:
 > Future work will investigate context-aware and adaptive fusion variants, including ASPP-lite deep context and gated P2/P3 fusion, under the same validation-only model-selection protocol.
 
 Kết luận section: bản hội nghị nên khóa ở SkinSeg-YOLO26-P2Attn với kết quả `SkinSeg_YOLO26_P2_CBAM_640_final`. Các biến thể v2 dùng cho Q1 để có câu chuyện architecture sâu hơn và ablation đầy đủ hơn.
+
+## Bootstrap CI cho bảng kết quả hội nghị ngày 2026-08-17
+
+Đã thêm script:
+
+```text
+05_bootstrap_test_ci.py
+```
+
+Mục tiêu của script là tạo confidence interval bằng **image-level nonparametric bootstrap** trên test predictions đã lưu, phục vụ bảng phụ/analysis trong paper. Script đọc:
+
+```text
+D:\PAPER_SPKT\SkinSeg_YOLO26_P2_CBAM_640_final\SkinSeg_YOLO26_P2_CBAM_Test_Final_20260817\predictions.json
+D:\PAPER_SPKT\SkinSeg_YOLO26_P2_CBAM_640_final\SkinSeg_YOLO26_P2_CBAM_Test_Final_20260817\test_metrics.json
+D:\PAPER_SPKT\Ham1000_p2_CBAM\dataset_p2_cbam.yaml
+```
+
+Output được lưu tại:
+
+```text
+D:\PAPER_SPKT\SkinSeg_YOLO26_P2_CBAM_640_final\SkinSeg_YOLO26_P2_CBAM_Test_Final_20260817\bootstrap_ci
+```
+
+Các file output:
+
+- `bootstrap_ci.json`
+- `bootstrap_ci.csv`
+- `bootstrap_ci_table.md`
+- `per_image_metrics.csv`
+
+Lệnh đã chạy:
+
+```text
+python 05_bootstrap_test_ci.py --n-boot 2000 --seed 0
+```
+
+Kết quả bootstrap CI:
+
+| Metric | Point | 95% bootstrap CI |
+|---|---:|---:|
+| top1_accuracy | 0.9037 | [0.8858, 0.9206] |
+| box_iou_mean | 0.9093 | [0.9020, 0.9165] |
+| box_iou50_rate | 0.9841 | [0.9762, 0.9911] |
+| mask_iou_mean | 0.9038 | [0.8958, 0.9111] |
+| mask_dice_mean | 0.9431 | [0.9366, 0.9492] |
+| mask_iou50_rate | 0.9811 | [0.9732, 0.9891] |
+| strict_class_and_mask_iou50_rate | 0.8878 | [0.8679, 0.9067] |
+
+Lưu ý rất quan trọng khi viết paper:
+
+- Các CI này là bootstrap theo ảnh cho **image-level proxy metrics**, không phải CI chính thức cho COCO/Ultralytics mAP.
+- Ultralytics mAP50 và mAP50-95 vẫn nên báo cáo dưới dạng point estimate từ `test_metrics.json`: mask mAP50 = 0.9006, mask mAP50-95 = 0.7154.
+- Có thể dùng bảng bootstrap này để bổ sung Dice/IoU/accuracy-style evidence, nhưng không nên viết rằng “mask mAP50-95 95% CI = ...” vì script hiện không recompute mAP trên từng bootstrap sample.
+- Script tự xử lý lệch `category_id` 1-based trong COCO `predictions.json` về class 0-based của YOLO labels.
+
+Câu an toàn để viết:
+
+> To complement the mAP point estimates, image-level nonparametric bootstrap with 2000 resamples was used to estimate uncertainty for top-1 lesion class agreement, mean mask IoU, mean Dice, and IoU-threshold success rates.
+
+Câu không nên viết:
+
+> We report bootstrap confidence intervals for mAP50-95.
+
+Nếu muốn CI cho mAP thật sự, cần recompute evaluator/mAP trên từng bootstrap subset ảnh, phức tạp hơn và phải bảo đảm logic matching giống Ultralytics.

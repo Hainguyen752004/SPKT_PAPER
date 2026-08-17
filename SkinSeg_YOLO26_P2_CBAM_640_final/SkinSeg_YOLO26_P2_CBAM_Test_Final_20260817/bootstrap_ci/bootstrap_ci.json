@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "n_images": 1007,
+  "n_boot": 2000,
+  "seed": 0,
+  "image_size": 640,
+  "ci_method": "image-level nonparametric bootstrap percentile CI",
+  "metric_scope": "image-level proxy metrics; Ultralytics mAP values are point estimates copied from test_metrics_json",
+  "ultralytics_point_metrics": {
+    "metrics/mAP50(B)": 0.906005130243649,
+    "metrics/mAP50(M)": 0.9006110765611176,
+    "metrics/mAP50-95(B)": 0.7246842254886828,
+    "metrics/mAP50-95(M)": 0.7153858212717445,
+    "metrics/precision(B)": 0.8766684305959301,
+    "metrics/precision(M)": 0.8695931565310887,
+    "metrics/recall(B)": 0.8201829483366012,
+    "metrics/recall(M)": 0.8134014415550944
+  },
+  "metrics": {
+    "top1_accuracy": {
+      "point": 0.9036742800397219,
+      "ci_low": 0.8857994041708044,
+      "ci_high": 0.9205561072492552
+    },
+    "box_iou_mean": {
+      "point": 0.9093435499918303,
+      "ci_low": 0.9020127006600341,
+      "ci_high": 0.9165288008895602
+    },
+    "box_iou50_rate": {
+      "point": 0.9841112214498511,
+      "ci_low": 0.9761668321747765,
+      "ci_high": 0.9910625620655412
+    },
+    "mask_iou_mean": {
+      "point": 0.9038108681894181,
+      "ci_low": 0.8958431330514006,
+      "ci_high": 0.9110660301044878
+    },
+    "mask_dice_mean": {
+      "point": 0.943094068678203,
+      "ci_low": 0.9365836319812856,
+      "ci_high": 0.9491860772493863
+    },
+    "mask_iou50_rate": {
+      "point": 0.9811320754716981,
+      "ci_low": 0.9731876861966237,
+      "ci_high": 0.9890764647467726
+    },
+    "strict_class_and_mask_iou50_rate": {
+      "point": 0.887785501489573,
+      "ci_low": 0.8679245283018868,
+      "ci_high": 0.9066534260178749
+    }
+  }
+}
