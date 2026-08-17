@@ -2138,3 +2138,56 @@ Sau khi full train và ablation hoàn thành, quay lại sửa Introduction theo
 1. Thay ngôn ngữ mục tiêu như `aims to` bằng kết luận chỉ ở những điểm được kết quả hỗ trợ.
 2. Thêm một câu kết quả ngắn ở cuối Introduction, nhất quán tuyệt đối với Abstract, Results, bảng và supplementary material.
 3. Nếu một thành phần không cải thiện hoặc chỉ cải thiện một subgroup, mô tả đúng hiệu ứng quan sát được; không giữ claim tổng quát ban đầu.
+
+## Ghi chú kỹ thuật ngày 2026-08-17: khóa checkpoint và chính sách final test
+
+CBAM trong cấu hình hiện tại gồm channel attention và spatial attention theo công thức chuẩn, chỉ nhân lại trọng số chú ý nên giữ nguyên shape tensor. Nhánh dự đoán P2-P5 tương ứng stride 4/8/16/32; phần prototype của `P2CompatibleSegment26` dùng đầu vào P3-P5 nhưng vẫn sinh mask prototype ở stride 4. Run 200 epoch đã chứng minh graph forward/loss hoạt động ổn định đủ để đánh giá checkpoint, không phải chỉ là cấu hình trên giấy.
+
+YAML hiện đúng cho scale `n`, nhưng các lớp CBAM đang ghi cứng channel 64/128. Điều này không tự an toàn khi đổi sang scale `s/m/l/x`; nếu mở rộng scale phải rà lại channel tại vị trí đặt CBAM trước khi train.
+
+Checkpoint nên dùng là `best.pt`, vì best validation xuất hiện khoảng epoch 183 với mask mAP50 0.8664, mask mAP50-95 0.6874 và box mAP50-95 0.7118. Epoch 200 thấp hơn khoảng 0.0017 ở mask mAP50-95, đồng thời validation segmentation loss tăng nhẹ cuối run, nên dùng checkpoint tốt nhất theo validation thay vì checkpoint cuối.
+
+Confusion hiện cho thấy `nv/bcc/df/vasc` mạnh hơn, còn `mel/akiec` yếu hơn. Rủi ro chính cần báo cáo thẳng là `mel->nv` và `akiec->bkl/background`.
+
+Số polygon theo lớp là: nv 24138, mel 9336, bkl 9220, bcc 4316, akiec 2742, vasc 1188, df 966. Chiến lược augmentation loại trừ NV giúp không phóng đại lớp đa số, nhưng chưa cân bằng các minority class với nhau; `vasc/df/akiec` vẫn ít hơn rõ rệt so với `mel/bkl`.
+
+Các biến gây nhiễu cần ablate gồm `optimizer=auto`, rotation 180 degrees, augmentation online cộng offline, mixup và copy-paste. Đối chứng hợp lý là AdamW với lr 0.001 và một profile augmentation dermoscopy ít tạo ảnh da không thực hơn.
+
+Kết quả baseline PDF test ba seed 0.5636±0.0234 mask mAP50-95 không được so trực tiếp với validation một seed 0.6874 trên 31,880 train images. Hai con số khác split, khác số seed và khác điều kiện báo cáo nên chỉ dùng để định hướng, không dùng làm kết luận cải thiện trực tiếp.
+
+Ma trận ablation cần khóa trước khi mở final test: A=YOLO26n baseline không P2/CBAM; B=P2-only; C=CBAM-only; D=P2+CBAM. Tất cả phải dùng cùng split, data, seed, hyperparameter và quy tắc chọn checkpoint bằng validation.
+
+Quy tắc cuối: model và hyperparameter chỉ được chọn bằng validation only; test is final reporting only và không được dùng để chỉnh model, chọn A-D, chọn vị trí attention, chọn augmentation hoặc chọn hyperparameter. Nếu sau khi xem test mà vẫn muốn tiếp tục chọn model, phải giữ một final test set khác chưa từng mở; nếu không có, mọi phát triển tiếp theo chỉ dùng validation và kết quả test này chỉ là báo cáo checkpoint hiện tại.
+
+## Kết quả benchmark test ngày 2026-08-17: P2-CBAM best.pt
+
+Đã chạy script `04_evaluate_best_test.py` trên checkpoint:
+
+```text
+D:\PAPER_SPKT\SkinSeg_YOLO26_P2_CBAM_640\weights\best.pt
+```
+
+Kết quả được lưu tại:
+
+```text
+D:\PAPER_SPKT\Ham1000_p2_CBAM\runs\segment\SkinSeg_YOLO26_P2_CBAM_Test_Final_20260817\test_metrics.json
+```
+
+Thiết lập đánh giá: split `test`, image size 640, batch 16, device GPU 0, seed 0, Ultralytics 8.4.13, PyTorch 2.6.0+cu124, CUDA 12.4. Checkpoint SHA-256 là `0dbbb473ff03c210421b5f54918aadfd38ccfaffd786b48ba4e2ce068e5629c2`. Không thiếu metric nào trong tám metric chính của Ultralytics.
+
+Kết quả tổng thể:
+
+| Nhóm | Precision | Recall | mAP50 | mAP50-95 |
+|---|---:|---:|---:|---:|
+| Box | 0.8767 | 0.8202 | 0.9060 | 0.7247 |
+| Mask | 0.8696 | 0.8134 | 0.9006 | 0.7154 |
+
+Nhận xét nhanh:
+
+1. Kết quả test cao hơn validation best trước đó. Validation best mask mAP50-95 khoảng 0.6874, còn test đạt 0.7154. Chênh lệch này là tín hiệu tốt, nhưng chưa nên diễn giải là mô hình tổng quát hóa chắc chắn tốt hơn mọi baseline vì hiện mới có một checkpoint, một seed và protocol dữ liệu đã khác baseline PDF.
+2. Box và mask khá sát nhau. Box mAP50-95 là 0.7247, mask mAP50-95 là 0.7154, chỉ thấp hơn khoảng 0.0093. Điều này cho thấy head segmentation không bị tụt quá nhiều so với localization; biên mask đang theo được vùng tổn thương tương đối ổn.
+3. Precision cao hơn recall ở cả box và mask. Với mask, precision 0.8696 và recall 0.8134. Mô hình có xu hướng dự đoán khá chắc, ít false positive hơn, nhưng vẫn còn bỏ sót một phần lesion hoặc một số ca khó. Khi viết paper nên nói mô hình đạt độ chính xác cao nhưng recall vẫn là điểm cần theo dõi, đặc biệt ở `mel/akiec`.
+4. Mask mAP50 đạt 0.9006 là rất tốt cho ngưỡng IoU 0.5. mAP50-95 đạt 0.7154 cho thấy khi tăng yêu cầu khớp biên từ dễ đến khó, mô hình vẫn giữ chất lượng tốt, nhưng vẫn còn khoảng cách giữa nhận diện vùng tổn thương và khớp biên thật chính xác.
+5. So với baseline PDF đã báo cáo mask mAP50-95 0.5636±0.0234 trên test ba seed, con số 0.7154 là rất khả quan. Tuy nhiên, so sánh này chỉ nên viết là "tham chiếu định hướng" hoặc "preliminary comparison", chưa phải kết luận vượt trội cuối cùng, vì P2-CBAM hiện dùng dữ liệu augmentation lớn hơn và chưa có cùng số seed/ablation khép kín.
+
+Kết luận tạm thời: checkpoint P2-CBAM `best.pt` có kết quả test mạnh, đặc biệt ở mask mAP50-95 0.7154 và mask mAP50 0.9006. Đây là đủ tốt để đưa vào phần kết quả sơ bộ và làm căn cứ viết Results/Discussion, nhưng kết luận khoa học cuối cùng vẫn cần ma trận ablation A-D cùng protocol thống nhất.
