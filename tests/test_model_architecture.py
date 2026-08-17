@@ -19,6 +19,13 @@ def load_training_module():
     return module
 
 
+def load_v2b_training_entrypoint():
+    spec = importlib.util.spec_from_file_location("train_p2_cbam_v2b", ROOT / "03_train_p2_cbam_v2b.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_cbam_is_channel_preserving_and_registered_by_identity():
     import ultralytics.nn.modules as modules
     import ultralytics.nn.tasks as tasks
@@ -283,3 +290,25 @@ def test_train_cli_selects_v2b_model_and_adamw_optimizer(tmp_path, monkeypatch):
     assert train_calls[0]["optimizer"] == "AdamW"
     assert train_calls[0]["name"] == "quick_v2b"
     assert not runtime_yaml.exists()
+
+
+def test_v2b_training_entrypoint_uses_200_epoch_adamw_preset(monkeypatch):
+    entrypoint = load_v2b_training_entrypoint()
+    calls = []
+
+    class FakeTrainingModule:
+        @staticmethod
+        def main(argv):
+            calls.append(argv)
+
+    monkeypatch.setattr(entrypoint, "_load_training_module", lambda: FakeTrainingModule)
+    monkeypatch.setattr(sys, "argv", ["03_train_p2_cbam_v2b.py"])
+
+    entrypoint.main()
+
+    assert calls == [[
+        "--architecture", "v2b",
+        "--optimizer", "AdamW",
+        "--epochs", "200",
+        "--name", "SkinSeg_YOLO26_P2_CBAM_v2B_GatedFusion_AdamW_E200",
+    ]]

@@ -2283,6 +2283,18 @@ Script train `03_train_p2_cbam.py` đã có option chọn kiến trúc và optim
 python 03_train_p2_cbam.py --architecture v2b --optimizer AdamW --name SkinSeg_YOLO26_P2_CBAM_v2B_GatedFusion_AdamW
 ```
 
+Sau khi chốt protocol v2B ngày 2026-08-17, cấu hình train chính được đặt thành **200 epochs + AdamW** qua entry-point riêng:
+
+```text
+python 03_train_p2_cbam_v2b.py
+```
+
+Lệnh trên tương đương:
+
+```text
+python 03_train_p2_cbam.py --architecture v2b --optimizer AdamW --epochs 200 --name SkinSeg_YOLO26_P2_CBAM_v2B_GatedFusion_AdamW_E200
+```
+
 Nếu không truyền `--optimizer`, Ultralytics dùng mặc định `optimizer=auto`. Với Ultralytics 8.4.13, `auto` không đồng nghĩa luôn luôn là AdamW: run ngắn có thể chọn AdamW, nhưng run dài trên 10000 iterations sẽ tự chọn MuSGD. Vì vậy nếu muốn ablation AdamW sạch thì phải truyền `--optimizer AdamW` tường minh.
 
 Ý nghĩa research: v2B là thử nghiệm “fusion-aware attention”, nhắm trực tiếp vào chỗ skip feature P2/P3 và semantic upsample feature trộn với nhau. Hướng này phù hợp với phân tích trước đó rằng model hiện đã localize/mask khá tốt, nhưng vẫn cần cải thiện class khó, minority recall và boundary/context sau fusion. Chưa dùng kết quả test final để chọn hyperparameter; v2B phải được train/so sánh bằng validation protocol trước, rồi mới quyết định có đáng đưa vào ablation chính hay không.

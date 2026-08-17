@@ -205,7 +205,7 @@ def _fraction(value):
     return parsed
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description="Train SkinSeg-YOLO26n-P2-CBAM")
     parser.add_argument("--epochs", type=int, default=300, help="Training epochs (default: 300)")
     parser.add_argument("--fraction", type=_fraction, default=1.0, help="Dataset fraction for quick checks (default: 1.0)")
@@ -230,7 +230,7 @@ def main():
         default="auto",
         help="Optimizer passed to Ultralytics train() (default: auto)",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     register_architecture(args.architecture)
     require_yolo26_support()
     model_yaml = resolve_model_yaml(args.model_yaml, args.architecture)
