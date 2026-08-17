@@ -2191,3 +2191,90 @@ Nhận xét nhanh:
 5. So với baseline PDF đã báo cáo mask mAP50-95 0.5636±0.0234 trên test ba seed, con số 0.7154 là rất khả quan. Tuy nhiên, so sánh này chỉ nên viết là "tham chiếu định hướng" hoặc "preliminary comparison", chưa phải kết luận vượt trội cuối cùng, vì P2-CBAM hiện dùng dữ liệu augmentation lớn hơn và chưa có cùng số seed/ablation khép kín.
 
 Kết luận tạm thời: checkpoint P2-CBAM `best.pt` có kết quả test mạnh, đặc biệt ở mask mAP50-95 0.7154 và mask mAP50 0.9006. Đây là đủ tốt để đưa vào phần kết quả sơ bộ và làm căn cứ viết Results/Discussion, nhưng kết luận khoa học cuối cùng vẫn cần ma trận ablation A-D cùng protocol thống nhất.
+
+## Ghi chú đọc 3 paper nền ngày 2026-08-17: hướng sửa block P2-CBAM-v2
+
+Mục tiêu của ghi chú này là giữ lại ngữ cảnh trước khi sửa model. Hiện chưa thay đổi YAML hoặc code kiến trúc; đây chỉ là phân tích định hướng để tránh quên lý do thiết kế.
+
+### 1. Bài baseline YOLO26 của nhóm
+
+Bài baseline YOLO26 là mốc protocol quan trọng nhất. Kết luận chính của bài này là không nên đánh đổi lung tung bằng preprocessing hoặc augmentation quá mạnh. Khi architecture, resolution, training budget và protocol đánh giá được giữ cố định, raw/minimally processed input với online augmentation cho trade-off tốt hơn các pipeline deterministic preprocessing phức tạp.
+
+Điểm yếu còn lại cần nhắm tới là `mel -> nv`, `akiec -> bkl/background`, và minority recall. Vì vậy nếu sửa model thì không nên chỉ tăng tham số hay tăng neuron chung chung. Thay đổi phải nhắm vào class khó, boundary detail và context sau khi feature được fuse, vì nhiều lỗi không phải do mask overlap quá thấp mà do phân biệt chẩn đoán giữa các class có hình thái gần nhau.
+
+### 2. Bài Scientific Reports dual-branch
+
+Đây là bài đáng học nhất về block/kiến trúc. Các thành phần họ dùng gồm:
+
+- ASPP để lấy multi-scale context bằng dilated convolution.
+- Transformer để thêm global context.
+- Multi-scale fusion với kernel 3x3, 5x5, 7x7.
+- Attention Gate để lọc skip/fusion feature theo vùng liên quan.
+- SE block để recalibrate channel.
+- Mask/morphology branch để khai thác thông tin hình dạng, biên, bất đối xứng và độ phức tạp của lesion.
+
+Tuy nhiên, mô hình của họ rất nặng, khoảng 66.3M parameters. Không nên bê nguyên EfficientNet-B7, Transformer đầy đủ, hoặc dual-branch morphology classifier vào YOLO26n vì sẽ phá mục tiêu lightweight và làm khó ablation. Cái đáng học là ý tưởng nhẹ: ASPP-lite hoặc DilatedContext cho tầng sâu, gated/adaptive fusion ở head, và SE/CBAM đặt đúng vị trí fusion thay vì chỉ tăng backbone.
+
+### 3. Bài YOLOv11
+
+Bài YOLOv11 chủ yếu là YOLOv11s-seg kết hợp app deployment. Metric được báo cáo gồm detection mAP50-95 khoảng 0.735 và segmentation mAP50-95 khoảng 0.706. Model P2-CBAM hiện tại của mình đạt mask mAP50-95 0.7154 trên test benchmark đã khóa, tức nhỉnh hơn con số segmentation mAP50-95 của bài YOLOv11.
+
+Bài YOLOv11 hữu ích để đối chiếu kết quả và narrative ứng dụng, nhưng không cung cấp block mới mạnh bằng bài Scientific Reports. Do đó không nên lấy nó làm nguồn chính cho sửa kiến trúc.
+
+### Hướng đề xuất cho model mới
+
+Tạo model mới tên tạm `P2-CBAM-v2`, không sửa đè model cũ. Model cũ đang là mốc đã benchmark và đã push GitHub; mọi thử nghiệm mới phải giữ nó nguyên vẹn để còn so sánh.
+
+Các hướng block có cơ sở:
+
+1. Thêm `ASPP-lite` hoặc `DilatedContext` ở tầng sâu P5/P4 trước khi fusion xuống P3/P2. Mục tiêu là tăng receptive field và global/local context cho các lesion có hình thái dễ nhầm, nhưng không làm nặng như Transformer đầy đủ.
+2. Thêm `GatedFusion` sau concat ở P2/P3 để học tỷ lệ lấy thông tin từ skip feature và upsample feature. Mục tiêu là tránh fusion kiểu concat cứng, giúp head tự chọn feature hữu ích cho boundary và class khó.
+3. Giữ CBAM nhưng cân nhắc chuyển hoặc nhân đôi CBAM ở head fusion thay vì chỉ đặt trong backbone. Lý do là lỗi hiện tại nằm nhiều ở nhận diện class và boundary sau khi fuse feature, không chỉ ở feature extraction đầu vào.
+4. Chưa nên thêm Transformer đầy đủ. Nếu cần global context, chỉ thử block nhẹ ở P5, không đặt ở P2 vì P2 có spatial resolution cao và attention đầy đủ sẽ rất tốn tài nguyên.
+
+Ma trận ưu tiên thử nghiệm:
+
+| Phiên bản | Thay đổi chính | Mục tiêu | Rủi ro |
+|---|---|---|---|
+| v2A | P2-CBAM + ASPP-lite ở P5 | Tăng context sâu, cải thiện mask mAP50-95 | Có thể chưa tác động đủ tới P2 boundary |
+| v2B | P2-CBAM + GatedFusion ở P2/P3 | Cải thiện fusion, boundary và minority recall | Cần code custom module ổn định |
+| v2C | P2-CBAM + ASPP-lite + GatedFusion | Kết hợp context sâu và fusion thích nghi | Nặng hơn, cần ablation rõ để biết module nào có ích |
+
+Khuyến nghị hiện tại: bắt đầu với `v2B` hoặc `v2C`. Nếu ưu tiên an toàn và ít thay đổi, chọn `v2B`. Nếu ưu tiên khả năng tăng mAP cao hơn và chấp nhận thêm rủi ro, chọn `v2C`. Dù chọn hướng nào, phải tạo YAML mới và module mới, không sửa đè `yolo26n-seg-p2-cbam.yaml`.
+## Ghi chú triển khai P2-CBAM-v2B GatedFusion ngày 2026-08-17
+
+Đã triển khai nhánh kiến trúc `v2B` theo hướng an toàn: giữ nguyên model baseline `models/yolo26n-seg-p2-cbam.yaml` và tạo model mới riêng tại:
+
+```text
+models/yolo26n-seg-p2-cbam-v2b-gatedfusion.yaml
+```
+
+Thay đổi chính của v2B là thêm module `GatedFusion` trong `cbam.py`. Module này nhận tensor đã concat, học gate theo channel và spatial, sau đó nhân lại vào feature map nhưng không đổi shape. Vì vậy nó phù hợp để đặt sau các điểm fusion của neck mà không phá contract của YOLO26/Segment26.
+
+Vị trí đặt gate:
+
+1. Sau concat P3 `Concat([-1, 6])`, trước `C3k2` P3.
+2. Sau concat P2 `Concat([-1, 3])`, trước `C3k2` P2.
+
+Do thêm hai layer mới, chỉ số head của v2B thay đổi so với baseline:
+
+```text
+Baseline Segment26 inputs: [21, 24, 27, 30]
+v2B Segment26 inputs:      [23, 26, 29, 32]
+```
+
+Các kiểm tra đã chạy:
+
+```text
+python -m pytest tests\test_v2b_gated_fusion.py -q
+python -m pytest tests\test_model_architecture.py -q
+python -m py_compile cbam.py tests\test_v2b_gated_fusion.py
+```
+
+Kết quả xác minh:
+
+- `tests/test_v2b_gated_fusion.py`: 3 passed.
+- `tests/test_model_architecture.py`: 14 passed.
+- `py_compile`: passed.
+
+Ý nghĩa research: v2B là thử nghiệm “fusion-aware attention”, nhắm trực tiếp vào chỗ skip feature P2/P3 và semantic upsample feature trộn với nhau. Hướng này phù hợp với phân tích trước đó rằng model hiện đã localize/mask khá tốt, nhưng vẫn cần cải thiện class khó, minority recall và boundary/context sau fusion. Chưa dùng kết quả test final để chọn hyperparameter; v2B phải được train/so sánh bằng validation protocol trước, rồi mới quyết định có đáng đưa vào ablation chính hay không.
