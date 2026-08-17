@@ -21,14 +21,14 @@ Therefore v2B targets the neck fusion points where high-resolution skip features
 
 ## Architecture change
 
-Add a channel-preserving `GatedFusion` module in `cbam.py`.
+Add a channel-preserving `GatedFusion` module in a separate `cbam_v2b.py` extension file. Keep `cbam.py` as the baseline P2-CBAM module.
 
 Expected behavior:
 
 - input tensor shape `(N, C, H, W)`
 - output tensor shape `(N, C, H, W)`
 - no channel projection by default
-- registerable by `register_cbam()` under both `ultralytics.nn.modules` and `ultralytics.nn.tasks`
+- registerable by `register_v2b()` under both `ultralytics.nn.modules` and `ultralytics.nn.tasks`
 
 Create a new YAML:
 
@@ -48,7 +48,7 @@ The v2B head indices are expected to shift because of the two inserted modules:
 
 ## Training impact
 
-The old training script can still train the original baseline. v2B training should be run only after validating that the new YAML builds and forwards correctly. If a later turn adds a v2B training entry point, it must preserve the original baseline command and document how pretrained transfer is handled with shifted head indices.
+The training script keeps the original baseline default. v2B training uses `--architecture v2b`, and optimizer choice is explicit through `--optimizer`. If no optimizer is provided, Ultralytics keeps its default `optimizer=auto`.
 
 ## Tests
 

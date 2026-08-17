@@ -214,6 +214,7 @@ def test_train_cli_overrides_fast_run_controls(tmp_path, monkeypatch):
 
     monkeypatch.setattr(train, "YOLO", FakeYOLO)
     monkeypatch.setattr(train, "require_yolo26_support", lambda: object)
+    monkeypatch.setattr(train, "register_architecture", lambda architecture: None)
     monkeypatch.setattr(train, "load_partial_pretrained", lambda model, weights: {})
     monkeypatch.setattr(train, "create_runtime_dataset_yaml", lambda source_yaml: runtime_yaml)
     monkeypatch.setattr(train.torch.cuda, "is_available", lambda: True)
@@ -236,5 +237,49 @@ def test_train_cli_overrides_fast_run_controls(tmp_path, monkeypatch):
     assert train_calls[0]["workers"] == 0
     assert train_calls[0]["name"] == "quick_smoke"
     assert train_calls[0]["mask_ratio"] == 2
+    assert train_calls[0]["optimizer"] == "auto"
     assert train_calls[0]["verbose"] is False
+    assert Path(train_calls[0]["project"]) == ROOT / "runs" / "segment"
+    assert not runtime_yaml.exists()
+
+
+def test_train_cli_selects_v2b_model_and_adamw_optimizer(tmp_path, monkeypatch):
+    train = load_training_module()
+    runtime_yaml = tmp_path / "runtime.yaml"
+    runtime_yaml.write_text("path: dataset\n", encoding="utf-8")
+    train_calls = []
+    model_paths = []
+    registered = []
+
+    class FakeYOLO:
+        def __init__(self, model_path):
+            model_paths.append(Path(model_path))
+            self.model = types.SimpleNamespace(state_dict=lambda: {})
+
+        def train(self, **kwargs):
+            train_calls.append(kwargs)
+
+    monkeypatch.setattr(train, "YOLO", FakeYOLO)
+    monkeypatch.setattr(train, "require_yolo26_support", lambda: object)
+    monkeypatch.setattr(train, "register_architecture", lambda architecture: registered.append(architecture))
+    monkeypatch.setattr(train, "load_partial_pretrained", lambda model, weights: {})
+    monkeypatch.setattr(train, "create_runtime_dataset_yaml", lambda source_yaml: runtime_yaml)
+    monkeypatch.setattr(train.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(train.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(sys, "argv", [
+        "03_train_p2_cbam.py",
+        "--architecture", "v2b",
+        "--optimizer", "AdamW",
+        "--epochs", "1",
+        "--batch", "4",
+        "--workers", "0",
+        "--name", "quick_v2b",
+    ])
+
+    train.main()
+
+    assert registered == ["v2b"]
+    assert model_paths == [ROOT / "models" / "yolo26n-seg-p2-cbam-v2b-gatedfusion.yaml"]
+    assert train_calls[0]["optimizer"] == "AdamW"
+    assert train_calls[0]["name"] == "quick_v2b"
     assert not runtime_yaml.exists()

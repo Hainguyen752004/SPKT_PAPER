@@ -12,10 +12,12 @@ import torch
 import yaml
 from ultralytics import YOLO
 
-from cbam import CBAM, register_cbam
+from cbam import register_cbam
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+BASELINE_MODEL_YAML = SCRIPT_DIR / "models" / "yolo26n-seg-p2-cbam.yaml"
+V2B_MODEL_YAML = SCRIPT_DIR / "models" / "yolo26n-seg-p2-cbam-v2b-gatedfusion.yaml"
 register_cbam()
 
 # Stock YOLO26-seg layer -> custom P2-CBAM layer. Only semantically unchanged
@@ -29,6 +31,24 @@ YOLO26_SEG_LAYER_MAP = {
 def pretrained_weights_path():
     """Return the packaged official YOLO26n-seg checkpoint path."""
     return SCRIPT_DIR / "models" / "yolo26n-seg.pt"
+
+
+def register_architecture(architecture):
+    """Register custom modules needed by the selected architecture."""
+    if architecture == "v2b":
+        from cbam_v2b import register_v2b
+
+        register_v2b()
+    else:
+        register_cbam()
+
+
+def resolve_model_yaml(model_yaml, architecture):
+    """Resolve the model YAML while keeping the baseline default unchanged."""
+    if model_yaml is None:
+        return V2B_MODEL_YAML if architecture == "v2b" else BASELINE_MODEL_YAML
+    path = Path(model_yaml).expanduser()
+    return path.resolve() if path.is_absolute() else (SCRIPT_DIR / path).resolve()
 
 
 def require_yolo26_support():
@@ -192,9 +212,28 @@ def main():
     parser.add_argument("--batch", type=_positive_int, default=None, help="Override batch size")
     parser.add_argument("--workers", type=_nonnegative_int, default=None, help="Override dataloader workers")
     parser.add_argument("--name", default=None, help="Override Ultralytics run name")
+    parser.add_argument(
+        "--architecture",
+        choices=("baseline", "v2b"),
+        default="baseline",
+        help="Select registered custom architecture modules (default: baseline)",
+    )
+    parser.add_argument(
+        "--model-yaml",
+        type=Path,
+        default=None,
+        help="Override model YAML path; relative paths are resolved from this script directory",
+    )
+    parser.add_argument(
+        "--optimizer",
+        choices=("auto", "Adam", "Adamax", "AdamW", "NAdam", "RAdam", "RMSProp", "SGD", "MuSGD"),
+        default="auto",
+        help="Optimizer passed to Ultralytics train() (default: auto)",
+    )
     args = parser.parse_args()
+    register_architecture(args.architecture)
     require_yolo26_support()
-    model_yaml = SCRIPT_DIR / "models" / "yolo26n-seg-p2-cbam.yaml"
+    model_yaml = resolve_model_yaml(args.model_yaml, args.architecture)
     weights = pretrained_weights_path()
     dataset_yaml = SCRIPT_DIR / "dataset_p2_cbam.yaml"
     runtime_yaml = create_runtime_dataset_yaml(dataset_yaml)
@@ -220,7 +259,7 @@ def main():
             project=str(SCRIPT_DIR / "runs" / "segment"),
             name=run_name,
             exist_ok=True, val=True, fraction=args.fraction, mask_ratio=2,
-            verbose=False,
+            optimizer=args.optimizer, verbose=False,
         )
     except BaseException as exc:
         original_exception = exc

@@ -13,9 +13,9 @@ sys.path.insert(0, str(ROOT))
 def test_gated_fusion_is_channel_preserving_and_registered_by_identity():
     import ultralytics.nn.modules as modules
     import ultralytics.nn.tasks as tasks
-    from cbam import GatedFusion, register_cbam
+    from cbam_v2b import GatedFusion, register_v2b
 
-    register_cbam()
+    register_v2b()
     assert modules.GatedFusion is GatedFusion
     assert tasks.GatedFusion is GatedFusion
 
@@ -48,10 +48,11 @@ def test_v2b_yaml_adds_two_gated_fusion_layers_without_modifying_v1():
 
 
 def test_v2b_model_build_and_eval_forward_has_four_finite_scales():
-    from cbam import P2CompatibleSegment26, register_cbam
+    from cbam import P2CompatibleSegment26
+    from cbam_v2b import register_v2b
     from ultralytics import YOLO
 
-    register_cbam()
+    register_v2b()
     model = YOLO(str(ROOT / "models" / "yolo26n-seg-p2-cbam-v2b-gatedfusion.yaml")).model
     head = model.model[-1]
 

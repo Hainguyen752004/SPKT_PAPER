@@ -16,8 +16,8 @@ Implement a separate v2B model variant that adds `GatedFusion` at the P3 and P2 
    - Run the focused test file and confirm it fails before implementation.
 
 2. Implement `GatedFusion`
-   - Add `GatedFusion` to `cbam.py`.
-   - Register it in `register_cbam()` under both Ultralytics module namespaces.
+   - Add `GatedFusion` to `cbam_v2b.py`.
+   - Register it in `register_v2b()` under both Ultralytics module namespaces.
    - Keep `CBAM` and `P2CompatibleSegment26` behavior unchanged.
 
 3. Add v2B YAML
@@ -30,10 +30,14 @@ Implement a separate v2B model variant that adds `GatedFusion` at the P3 and P2 
    - Run existing architecture tests.
    - Run Python compile checks for modified Python files.
 
-5. Document
+5. Add train selection
+   - Keep baseline as the default training architecture.
+   - Add explicit CLI selection for v2B and optimizer choice.
+
+6. Document
    - Append a concise v2B implementation note to `tailieu.md`.
    - Include exact file names and state that no training/test selection has been done yet.
 
-6. Handoff
+7. Handoff
    - Report what changed.
    - Provide the next safe step: train v2B on validation protocol only, then compare against baseline.
