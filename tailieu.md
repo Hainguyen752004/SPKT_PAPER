@@ -2587,3 +2587,42 @@ Câu không nên viết:
 > We report bootstrap confidence intervals for mAP50-95.
 
 Nếu muốn CI cho mAP thật sự, cần recompute evaluator/mAP trên từng bootstrap subset ảnh, phức tạp hơn và phải bảo đảm logic matching giống Ultralytics.
+
+### Giải thích từng thông số bootstrap và cách claim
+
+Các thông số trong `bootstrap_ci_table.md` nên hiểu như sau:
+
+| Metric | Ý nghĩa | Cách claim |
+|---|---|---|
+| `top1_accuracy` | Micro accuracy theo ảnh: class của prediction score cao nhất có trùng class ground truth không. | Chỉ dùng như overall class-agreement proxy; không dùng một mình vì NV chiếm 671/1007 ảnh test. |
+| `box_iou_mean` | IoU trung bình giữa predicted box và bounding box lấy từ polygon ground truth. | Dùng như proxy chất lượng localization, không gọi là COCO box mAP. |
+| `box_iou50_rate` | Tỷ lệ ảnh có box IoU ≥ 0.50. | Dùng để nói phần lớn lesion được localize qua ngưỡng IoU 0.5. |
+| `mask_iou_mean` | IoU trung bình giữa predicted mask và mask ground truth rasterized từ polygon. | Dùng như image-level mask-overlap proxy, không gọi là mask mAP50-95. |
+| `mask_dice_mean` | Dice trung bình giữa predicted mask và ground-truth mask. Dice thường cao hơn IoU. | Có thể dùng cho độc giả medical imaging, nhưng phải nói là tính từ saved predictions. |
+| `mask_iou50_rate` | Tỷ lệ ảnh có mask IoU ≥ 0.50. | Dùng để nói coarse mask success rate. |
+| `strict_class_and_mask_iou50_rate` | Tỷ lệ ảnh vừa đúng class vừa có mask IoU ≥ 0.50. | Đây là proxy đơn micro an toàn nhất cho class-aware segmentation success. |
+| `macro_top1_accuracy` | Trung bình top-1 accuracy theo từng class, mỗi class có trọng số ngang nhau. | Nên ưu tiên khi bàn class imbalance. |
+| `macro_mask_iou_mean` | Trung bình per-class mask IoU mean. | Dùng để bàn chất lượng mask cân bằng lớp, tránh NV kéo số. |
+| `macro_mask_dice_mean` | Trung bình per-class mask Dice mean. | Dùng như Dice summary cân bằng lớp. |
+| `macro_strict_class_and_mask_iou50_rate` | Trung bình per-class của strict success: đúng class và mask IoU ≥ 0.50. | Metric compact tốt nhất để nói joint recognition + segmentation khi có mất cân bằng lớp. |
+
+Cách claim an toàn trong Results:
+
+> In addition to Ultralytics mAP point estimates, an image-level bootstrap analysis with 2000 resamples was performed on the held-out test predictions. The model achieved a mask IoU proxy of 0.9038 [0.8958, 0.9111] and a mask Dice proxy of 0.9431 [0.9366, 0.9492]. Because the test split is class-imbalanced, macro summaries were also reported, including macro top-1 accuracy of 0.8145 [0.7682, 0.8595] and macro strict class-and-mask-IoU50 success of 0.7806 [0.7247, 0.8334].
+
+Cách claim nên tránh:
+
+> The 95% CI of mask mAP50-95 is [0.8958, 0.9111].
+
+Lý do sai: script bootstrap hiện tại không recompute Ultralytics/COCO mAP trên từng bootstrap sample. Nó chỉ bootstrap image-level proxy metrics từ predictions đã lưu. Ultralytics mAP chính vẫn là point estimate: mask mAP50 = 0.9006 và mask mAP50-95 = 0.7154.
+
+Khi viết bảng paper, nên đặt mAP và bootstrap proxy tách nhau:
+
+| Nhóm | Metric | Value |
+|---|---|---:|
+| Official Ultralytics point estimate | Mask mAP50 | 0.9006 |
+| Official Ultralytics point estimate | Mask mAP50-95 | 0.7154 |
+| Image-level bootstrap proxy | Mask IoU mean | 0.9038 [0.8958, 0.9111] |
+| Image-level bootstrap proxy | Mask Dice mean | 0.9431 [0.9366, 0.9492] |
+| Image-level bootstrap proxy | Macro top-1 accuracy | 0.8145 [0.7682, 0.8595] |
+| Image-level bootstrap proxy | Macro strict class + mask IoU50 | 0.7806 [0.7247, 0.8334] |
