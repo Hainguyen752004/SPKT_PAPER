@@ -2298,3 +2298,210 @@ python 03_train_p2_cbam.py --architecture v2b --optimizer AdamW --epochs 200 --n
 Nếu không truyền `--optimizer`, Ultralytics dùng mặc định `optimizer=auto`. Với Ultralytics 8.4.13, `auto` không đồng nghĩa luôn luôn là AdamW: run ngắn có thể chọn AdamW, nhưng run dài trên 10000 iterations sẽ tự chọn MuSGD. Vì vậy nếu muốn ablation AdamW sạch thì phải truyền `--optimizer AdamW` tường minh.
 
 Ý nghĩa research: v2B là thử nghiệm “fusion-aware attention”, nhắm trực tiếp vào chỗ skip feature P2/P3 và semantic upsample feature trộn với nhau. Hướng này phù hợp với phân tích trước đó rằng model hiện đã localize/mask khá tốt, nhưng vẫn cần cải thiện class khó, minority recall và boundary/context sau fusion. Chưa dùng kết quả test final để chọn hyperparameter; v2B phải được train/so sánh bằng validation protocol trước, rồi mới quyết định có đáng đưa vào ablation chính hay không.
+
+## Ghi chú claim từ A đến Z cho bản hội nghị SkinSeg-YOLO26-P2Attn ngày 2026-08-17
+
+Phạm vi section này là bản hội nghị hiện tại, không bao gồm v2A/v2B/v2C. Thư mục kết quả khóa là:
+
+```text
+D:\PAPER_SPKT\SkinSeg_YOLO26_P2_CBAM_640_final
+```
+
+Trong thư mục này đã có đầy đủ `args.yaml`, `results.csv`, `results.png`, PR/F1/P/R curves cho box và mask, confusion matrix, batch visualization, `weights/best.pt`, `weights/last.pt`, và test final tại:
+
+```text
+D:\PAPER_SPKT\SkinSeg_YOLO26_P2_CBAM_640_final\SkinSeg_YOLO26_P2_CBAM_Test_Final_20260817\test_metrics.json
+```
+
+### 1. Tên model và phạm vi claim
+
+Tên phù hợp cho hội nghị: **SkinSeg-YOLO26-P2Attn**.
+
+Claim nên dùng:
+
+- Mô hình là một framework dựa trên Ultralytics YOLO26n cho skin lesion instance segmentation.
+- Mô hình mở rộng prediction pyramid thành bốn mức P2/P3/P4/P5, trong đó P2 có stride 4 để hỗ trợ chi tiết biên và tổn thương nhỏ.
+- CBAM được chèn tại các stage P2/P3 của backbone để refine feature sớm có độ phân giải cao.
+- Pipeline train dùng hai view cho mỗi ảnh nguồn: letterboxed view và artifact-processed view.
+- Artifact-processed view gồm vignette-oriented cropping, hair removal lấy cảm hứng từ DullRazor, Gray-World color constancy và letterboxing.
+- Polygon annotation được biến đổi nhất quán theo crop/resize.
+- Offline augmentation bổ sung chỉ áp dụng cho ảnh không chứa class đa số NV.
+
+Không nên claim:
+
+- Không nói đây là YOLO26 official P2 segmentation model. Cách đúng là custom YOLO26n-based P2-P5 segmentation adaptation.
+- Không nói CBAM, P2 hay DullRazor-inspired preprocessing là phát minh mới.
+- Không nói SOTA tuyệt đối.
+- Không nói mô hình phát hiện “tế bào ung thư”; đây là lesion instance segmentation/class-aware lesion prediction trên ảnh dermoscopic.
+- Không dùng kết quả test final để biện minh chọn thêm v2A/v2B/v2C cho hội nghị. Các biến thể đó để Q1/future work.
+
+### 2. Kết quả train/validation nên báo cáo
+
+Run final train 200 epoch. Checkpoint tốt nhất được chọn theo validation, không chọn theo test.
+
+Best validation theo `metrics/mAP50-95(M)` xuất hiện ở epoch 183:
+
+| Split | Epoch | Box P | Box R | Box mAP50 | Box mAP50-95 | Mask P | Mask R | Mask mAP50 | Mask mAP50-95 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Validation best | 183 | 0.8458 | 0.7835 | 0.8658 | 0.7118 | 0.8474 | 0.7850 | 0.8664 | 0.6874 |
+| Validation epoch 200 | 200 | 0.8624 | 0.7804 | 0.8662 | 0.7109 | 0.8584 | 0.7772 | 0.8595 | 0.6857 |
+
+Cách diễn giải:
+
+- Validation đã hội tụ ổn quanh cuối training; epoch 183 là best checkpoint theo mask mAP50-95.
+- Epoch 200 không sụp, nhưng mask mAP50-95 thấp hơn best khoảng 0.0017, nên dùng `best.pt` là đúng protocol.
+- Precision cao hơn recall, tức model dự đoán tương đối chắc nhưng vẫn còn bỏ sót một phần ca khó. Đây là điểm nên thảo luận ở failure analysis, đặc biệt với minority classes.
+
+### 3. Kết quả test final nên báo cáo
+
+Test final chạy một lần trên checkpoint `best.pt`, split `test`, image size 640, batch 16, seed 0, deterministic=True, Ultralytics 8.4.13, PyTorch 2.6.0+cu124, CUDA 12.4.
+
+Kết quả test final:
+
+| Split | Box P | Box R | Box mAP50 | Box mAP50-95 | Mask P | Mask R | Mask mAP50 | Mask mAP50-95 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Test final | 0.8767 | 0.8202 | 0.9060 | 0.7247 | 0.8696 | 0.8134 | 0.9006 | 0.7154 |
+
+Cách diễn giải mạnh vừa đủ:
+
+- Mask mAP50 đạt 0.9006, cho thấy mô hình nhận diện vùng tổn thương tốt ở ngưỡng IoU 0.5.
+- Mask mAP50-95 đạt 0.7154, cho thấy chất lượng mask vẫn giữ tốt khi yêu cầu IoU tăng từ 0.50 đến 0.95.
+- Khoảng cách giữa box mAP50-95 0.7247 và mask mAP50-95 0.7154 chỉ khoảng 0.0093, cho thấy segmentation head không tụt nhiều so với localization.
+- Mask precision 0.8696 cao hơn mask recall 0.8134, nên narrative nên nói mô hình có xu hướng conservative: ít false positive hơn, nhưng vẫn còn dư địa cải thiện recall.
+
+Không nên diễn giải quá mức:
+
+- Không nói test cao hơn validation nghĩa là model chắc chắn generalize tốt hơn mọi baseline. Có thể do split/test distribution, checkpoint selection và protocol khác.
+- Không tune model/hyperparameter sau khi nhìn test final nếu vẫn dùng cùng test set làm kết quả cuối.
+- Nếu sau này train v2A/v2B/v2C, phải so sánh bằng validation hoặc một test khác chưa mở; không dùng số test final này để chọn biến thể.
+
+### 4. So sánh với RIVF26 YOLO26 baseline
+
+PDF tham chiếu:
+
+```text
+D:\PAPER_SPKT\paper_base_ham1000\RIVF26__NCKH_K28_VietVu_DetaiSV_20260813_Submit.pdf
+```
+
+Thông tin chính từ paper baseline:
+
+- Bài đó dùng fixed YOLO26n-seg để phân tích preprocessing/augmentation trên HAM10000.
+- Protocol lesion-disjoint, test theo ba seed.
+- Raw + online augmentation là cấu hình tốt nhất trong các input strategy chính.
+- Kết quả YOLO26n-seg raw + online augmentation: Mask mAP50 = 0.7364 ± 0.0232, Mask mAP50:95 = 0.5636 ± 0.0234.
+- Paper cũng nhấn mạnh lỗi class khó: mask overlap có thể cao nhưng diagnostic class vẫn sai; ví dụ các nhầm lẫn liên quan `mel/nv` và `nv/bkl`, và recall `akiec` thấp.
+
+So sánh định hướng với SkinSeg-YOLO26-P2Attn:
+
+| Method/source | Protocol note | Mask mAP50 | Mask mAP50-95 |
+|---|---|---:|---:|
+| RIVF26 YOLO26n-seg raw + online aug | lesion-disjoint, 3 seeds | 0.7364 ± 0.0232 | 0.5636 ± 0.0234 |
+| SkinSeg-YOLO26-P2Attn final | current project split, 1 checkpoint/test final | 0.9006 | 0.7154 |
+
+Câu nên viết:
+
+> Compared with an earlier YOLO26n-seg preprocessing baseline reported under a lesion-disjoint three-seed protocol, the proposed SkinSeg-YOLO26-P2Attn obtains substantially higher mask mAP50 and mAP50-95 in the current experimental setting. Because the data split, training set construction, augmentation volume, and number of seeds are not identical, this comparison is used as contextual evidence rather than a controlled superiority claim.
+
+Không nên viết:
+
+> Our method outperforms the RIVF26 baseline by X% and proves SOTA.
+
+Lý do không nên claim trực tiếp:
+
+- Baseline PDF là three-seed lesion-disjoint protocol; run hiện tại là một checkpoint/test final trong project mới.
+- Dữ liệu train hiện tại có multiview/offline augmentation lớn hơn.
+- Cần thêm YOLO26 base cùng split/current pipeline để làm comparison chính thức. Anh sẽ bổ sung model YOLO26 base sau; lúc đó mới có đối chứng nội bộ thật sạch.
+
+### 5. So sánh với YOLOv11 paper
+
+PDF tham chiếu:
+
+```text
+D:\PAPER_SPKT\paper_base_ham1000\yolov11.pdf
+```
+
+Thông tin chính từ paper YOLOv11:
+
+- Mô hình dùng YOLOv11s-seg trên HAM10000, có preprocessing/augmentation và deployment web app.
+- Abstract/bảng kết quả báo detection mAP50 khoảng 0.91, detection mAP50-95 khoảng 0.735.
+- Segmentation mAP50 khoảng 0.905, segmentation mAP50-95 khoảng 0.706.
+- Phần kết luận báo gần tương tự: box mAP50 0.9145, box mAP50-95 0.7400, mask mAP50 0.9117, mask mAP50-95 0.7086.
+
+So sánh định hướng:
+
+| Method/source | Box mAP50 | Box mAP50-95 | Mask mAP50 | Mask mAP50-95 |
+|---|---:|---:|---:|---:|
+| YOLOv11 paper | ~0.9145 | ~0.7400 | ~0.9117 | ~0.7086 |
+| SkinSeg-YOLO26-P2Attn final | 0.9060 | 0.7247 | 0.9006 | 0.7154 |
+
+Cách diễn giải:
+
+- YOLOv11 paper có box metrics nhỉnh hơn một chút.
+- SkinSeg-YOLO26-P2Attn có mask mAP50-95 nhỉnh hơn nhẹ so với con số segmentation mAP50-95 được báo cáo trong YOLOv11 paper.
+- Khác biệt rất nhỏ và protocol không chắc đồng nhất, nên chỉ nên nói “comparable to” hoặc “competitive with”, không nói “outperforms” mạnh.
+- Giá trị của paper YOLOv11 với bài mình nằm ở bối cảnh ứng dụng và mức metric tham chiếu, không phải là đối chứng ablation chính.
+
+Câu nên viết:
+
+> The proposed model achieves a mask mAP50-95 of 0.7154, which is competitive with a recent YOLOv11s-seg HAM10000 study reporting segmentation mAP50-95 around 0.706-0.7086. Since the reported protocols and splits are not guaranteed to be identical, the comparison is interpreted as contextual benchmarking.
+
+### 6. Cách viết Results cho hội nghị
+
+Có thể viết theo flow sau:
+
+1. Nêu protocol: checkpoint selected on validation, final test evaluated once.
+2. Báo validation best epoch 183 để chứng minh model selection không dùng test.
+3. Báo test final table gồm box/mask P/R/mAP50/mAP50-95.
+4. Nhấn mạnh mask mAP50 0.9006 và mask mAP50-95 0.7154.
+5. Nói precision > recall, nên còn dư địa cải thiện recall/class khó.
+6. So sánh contextual với RIVF26 baseline và YOLOv11 paper, nhưng gắn caveat protocol.
+7. Kết thúc bằng limitation: cần YOLO26 base cùng split, ablation P2/CBAM/multiview/augmentation, nhiều seed và failure analysis theo class.
+
+### 7. Cách viết Discussion
+
+Điểm mạnh:
+
+- P2 stride-4 path có cơ sở hợp lý cho boundary và lesion nhỏ.
+- CBAM ở P2/P3 giúp refine feature sớm trước khi đi sâu hơn.
+- Multi-view preprocessing giữ raw/letterbox view đồng thời thêm artifact-processed view, không thay val/test bằng ảnh xử lý mạnh.
+- NV-excluding augmentation giảm áp lực class majority mà không tạo thêm NV vốn đã nhiều.
+
+Điểm yếu cần nói thật:
+
+- Test final hiện là một checkpoint, một seed.
+- Chưa có YOLO26 base cùng exact current split để claim improvement nội bộ.
+- Patient-level leakage chưa thể chứng minh nếu thiếu metadata bệnh nhân đầy đủ.
+- Per-class confusion/failure chưa được phân tích sâu trong section này; cần bổ sung khi có confusion/classwise table.
+- Recall thấp hơn precision, nên model vẫn có thể bỏ sót một số lesion hoặc ca minority khó.
+
+### 8. Câu claim an toàn cho abstract hiện tại
+
+Câu có thể dùng:
+
+> On the held-out test split, SkinSeg-YOLO26-P2Attn achieves 0.9006 mask mAP50 and 0.7154 mask mAP50-95, with mask precision and recall of 0.8696 and 0.8134, respectively.
+
+Câu có thể dùng nếu muốn so sánh nhẹ:
+
+> These results are competitive with recent YOLO-based HAM10000 segmentation reports and exceed the earlier YOLO26n-seg preprocessing baseline in the current experimental setting, while controlled same-split ablations remain necessary for final attribution.
+
+Câu không nên dùng:
+
+> SkinSeg-YOLO26-P2Attn is state-of-the-art on HAM10000.
+
+> The proposed preprocessing alone improves YOLO26 by 0.1518 mAP50-95.
+
+> The model solves class imbalance.
+
+### 9. Vị trí của v2A/v2B/v2C
+
+V2A/v2B/v2C không nên đưa vào main claim hội nghị hiện tại. Nên đặt vào future work hoặc Q1 extension:
+
+- v2A: ASPP-lite/DilatedContext để tăng deep context.
+- v2B: GatedFusion ở P2/P3 để học adaptive fusion.
+- v2C: kết hợp ASPP-lite và GatedFusion.
+
+Câu future work:
+
+> Future work will investigate context-aware and adaptive fusion variants, including ASPP-lite deep context and gated P2/P3 fusion, under the same validation-only model-selection protocol.
+
+Kết luận section: bản hội nghị nên khóa ở SkinSeg-YOLO26-P2Attn với kết quả `SkinSeg_YOLO26_P2_CBAM_640_final`. Các biến thể v2 dùng cho Q1 để có câu chuyện architecture sâu hơn và ablation đầy đủ hơn.
