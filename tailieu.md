@@ -2534,6 +2534,7 @@ Các file output:
 - `bootstrap_ci.csv`
 - `bootstrap_ci_table.md`
 - `per_image_metrics.csv`
+- `per_class_metrics.csv`
 
 Lệnh đã chạy:
 
@@ -2552,6 +2553,22 @@ Kết quả bootstrap CI:
 | mask_dice_mean | 0.9431 | [0.9366, 0.9492] |
 | mask_iou50_rate | 0.9811 | [0.9732, 0.9891] |
 | strict_class_and_mask_iou50_rate | 0.8878 | [0.8679, 0.9067] |
+| macro_top1_accuracy | 0.8145 | [0.7682, 0.8595] |
+| macro_mask_iou_mean | 0.8507 | [0.8266, 0.8708] |
+| macro_mask_dice_mean | 0.9082 | [0.8865, 0.9251] |
+| macro_strict_class_and_mask_iou50_rate | 0.7806 | [0.7247, 0.8334] |
+
+Per-class proxy metrics:
+
+| Class ID | n | Top-1 accuracy | Mask IoU mean | Mask Dice mean | Strict class + mask IoU50 |
+|---:|---:|---:|---:|---:|---:|
+| 0 akiec | 34 | 0.7647 | 0.8538 | 0.9197 | 0.7647 |
+| 1 bcc | 52 | 0.8077 | 0.7697 | 0.8588 | 0.7500 |
+| 2 bkl | 111 | 0.8288 | 0.8648 | 0.9197 | 0.8018 |
+| 3 df | 12 | 0.7500 | 0.8487 | 0.9158 | 0.7500 |
+| 4 mel | 112 | 0.5625 | 0.9024 | 0.9403 | 0.5536 |
+| 5 nv | 671 | 0.9881 | 0.9270 | 0.9578 | 0.9776 |
+| 6 vasc | 15 | 1.0000 | 0.7884 | 0.8454 | 0.8667 |
 
 Lưu ý rất quan trọng khi viết paper:
 
@@ -2559,6 +2576,7 @@ Lưu ý rất quan trọng khi viết paper:
 - Ultralytics mAP50 và mAP50-95 vẫn nên báo cáo dưới dạng point estimate từ `test_metrics.json`: mask mAP50 = 0.9006, mask mAP50-95 = 0.7154.
 - Có thể dùng bảng bootstrap này để bổ sung Dice/IoU/accuracy-style evidence, nhưng không nên viết rằng “mask mAP50-95 95% CI = ...” vì script hiện không recompute mAP trên từng bootstrap sample.
 - Script tự xử lý lệch `category_id` 1-based trong COCO `predictions.json` về class 0-based của YOLO labels.
+- Không nên chỉ báo cáo micro/top1 accuracy 0.9037 vì test set có 671/1007 ảnh NV, làm số micro rất cao. Khi viết paper nên ưu tiên macro/per-class để thể hiện rõ class khó, đặc biệt `mel` có top-1 accuracy 0.5625 dù mask IoU mean vẫn cao 0.9024. Điều này khớp với nhận xét trước đó rằng mô hình có thể segment lesion tốt nhưng vẫn nhầm diagnostic class.
 
 Câu an toàn để viết:
 

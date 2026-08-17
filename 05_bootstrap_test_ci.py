@@ -28,6 +28,12 @@ METRIC_COLUMNS = [
     "mask_iou50_rate",
     "strict_class_and_mask_iou50_rate",
 ]
+MACRO_METRIC_COLUMNS = [
+    "macro_top1_accuracy",
+    "macro_mask_iou_mean",
+    "macro_mask_dice_mean",
+    "macro_strict_class_and_mask_iou50_rate",
+]
 
 
 def _dataset_root(source_yaml, configured_path):
@@ -257,7 +263,65 @@ def bootstrap_summary(rows, n_boot, seed, ci_level=0.95):
             "ci_low": float(np.percentile(samples, lower_q)),
             "ci_high": float(np.percentile(samples, upper_q)),
         }
+    summary.update(stratified_macro_bootstrap_summary(rows, n_boot, rng, lower_q, upper_q))
     return summary
+
+
+def per_class_summary(rows):
+    groups = {}
+    for row in rows:
+        groups.setdefault(int(row["true_class"]), []).append(row)
+    summaries = []
+    for class_id, group in sorted(groups.items()):
+        summaries.append(
+            {
+                "class_id": class_id,
+                "n": len(group),
+                "top1_accuracy": float(np.mean([row["top1_accuracy"] for row in group])),
+                "mask_iou_mean": float(np.mean([row["mask_iou"] for row in group])),
+                "mask_dice_mean": float(np.mean([row["mask_dice"] for row in group])),
+                "strict_class_and_mask_iou50_rate": float(
+                    np.mean([row["strict_class_and_mask_iou50"] for row in group])
+                ),
+            }
+        )
+    return summaries
+
+
+def macro_points(rows):
+    classes = per_class_summary(rows)
+    return {
+        "macro_top1_accuracy": float(np.mean([row["top1_accuracy"] for row in classes])),
+        "macro_mask_iou_mean": float(np.mean([row["mask_iou_mean"] for row in classes])),
+        "macro_mask_dice_mean": float(np.mean([row["mask_dice_mean"] for row in classes])),
+        "macro_strict_class_and_mask_iou50_rate": float(
+            np.mean([row["strict_class_and_mask_iou50_rate"] for row in classes])
+        ),
+    }
+
+
+def stratified_macro_bootstrap_summary(rows, n_boot, rng, lower_q, upper_q):
+    groups = {}
+    for row in rows:
+        groups.setdefault(int(row["true_class"]), []).append(row)
+    point = macro_points(rows)
+    samples = {name: np.empty(n_boot, dtype=float) for name in MACRO_METRIC_COLUMNS}
+    for index in range(n_boot):
+        sampled_rows = []
+        for group in groups.values():
+            indices = rng.integers(0, len(group), size=len(group))
+            sampled_rows.extend(group[int(i)] for i in indices)
+        sampled_points = macro_points(sampled_rows)
+        for name in MACRO_METRIC_COLUMNS:
+            samples[name][index] = sampled_points[name]
+    return {
+        name: {
+            "point": point[name],
+            "ci_low": float(np.percentile(values, lower_q)),
+            "ci_high": float(np.percentile(values, upper_q)),
+        }
+        for name, values in samples.items()
+    }
 
 
 def load_point_metrics(test_metrics_json):
@@ -284,6 +348,12 @@ def write_outputs(output_dir, rows, summary):
         writer = csv.DictWriter(stream, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
+    per_class_rows = per_class_summary(rows)
+    with (output_dir / "per_class_metrics.csv").open("w", newline="", encoding="utf-8") as stream:
+        fieldnames = list(per_class_rows[0].keys())
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(per_class_rows)
     lines = [
         "| Metric | Point | 95% bootstrap CI |",
         "|---|---:|---:|",

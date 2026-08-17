@@ -78,10 +78,12 @@ def test_bootstrap_ci_writes_summary_outputs_for_single_lesion_dataset(tmp_path)
     assert summary["n_boot"] == 200
     assert summary["ultralytics_point_metrics"]["metrics/mAP50(M)"] == pytest.approx(0.9)
     assert summary["metrics"]["top1_accuracy"]["point"] == pytest.approx(0.5)
+    assert summary["metrics"]["macro_top1_accuracy"]["point"] == pytest.approx(0.5)
     assert summary["metrics"]["mask_iou50_rate"]["point"] == pytest.approx(0.5)
     assert (output_dir / "bootstrap_ci.json").is_file()
     assert (output_dir / "bootstrap_ci.csv").is_file()
     assert (output_dir / "per_image_metrics.csv").is_file()
+    assert (output_dir / "per_class_metrics.csv").is_file()
     assert (output_dir / "bootstrap_ci_table.md").is_file()
 
 
